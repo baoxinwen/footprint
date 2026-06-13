@@ -1,0 +1,32 @@
+# Production deployment using pre-built images from GitHub Container Registry
+# Usage: docker-compose -f docker-compose.prod.yml up -d
+
+services:
+  frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY}/frontend:main
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  backend:
+    image: ghcr.io/${GITHUB_REPOSITORY}/backend:main
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/db:/app/data
+      - ./data/uploads:/app/uploads
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - AMAP_KEY=${AMAP_KEY}
+      - DATABASE_URL=sqlite:///./data/footprint.db
+      - UPLOAD_DIR=/app/uploads
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
