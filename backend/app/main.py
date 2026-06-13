@@ -49,3 +49,10 @@ app.include_router(search.router)
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/api/config")
+def get_config():
+    return {
+        "amap_key": settings.AMAP_KEY,
+    }

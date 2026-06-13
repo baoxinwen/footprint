@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import AMapLoader from '@amap/amap-jsapi-loader'
 import { ElMessage } from 'element-plus'
 import { getCityMarkers, getMapStats, getAllRoutes, getPhotoMarkers } from '../api/stats'
+import { getConfig } from '../api/config'
 import EmptyState from '../components/EmptyState.vue'
 import PhotoViewer from '../components/PhotoViewer.vue'
 import type { CityMarker, MapStats, TripRoute, PhotoMapMarker } from '../types'
@@ -91,9 +92,13 @@ onMounted(async () => {
 })
 
 async function initMap() {
-  ;(window as any)._AMapSecurityConfig = { securityJsCode: import.meta.env.VITE_AMAP_SECURITY_CODE }
+  const config = await getConfig()
+  if (!config.amap_key) {
+    throw new Error('请填写 AMAP_KEY')
+  }
+  ;(window as any)._AMapSecurityConfig = { securityJsCode: '' }
   AMapRef = await AMapLoader.load({
-    key: import.meta.env.VITE_AMAP_KEY,
+    key: config.amap_key,
     version: '2.0',
     plugins: ['AMap.Scale', 'AMap.ToolBar', 'AMap.TileLayer.Satellite', 'AMap.TileLayer.RoadNet', 'AMap.TileLayer.Traffic'],
   })

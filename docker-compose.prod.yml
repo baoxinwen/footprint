@@ -3,16 +3,16 @@
 
 services:
   frontend:
-    image: ghcr.io/${GITHUB_REPOSITORY}/frontend:main
+    image: ghcr.io/baoxinwen/footprint/frontend:main
     ports:
-      - "80:80"
+      - "8080:80"
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
 
   backend:
-    image: ghcr.io/${GITHUB_REPOSITORY}/backend:main
+    image: ghcr.io/baoxinwen/footprint/backend:main
     ports:
       - "8000:8000"
     volumes:

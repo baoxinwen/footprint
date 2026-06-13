@@ -1,6 +1,6 @@
 services:
   frontend:
-    image: ghcr.io/${GITHUB_REPOSITORY:-your-username/footprint}/frontend:main
+    image: ghcr.io/baoxinwen/footprint/frontend:main
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -12,7 +12,7 @@ services:
     restart: unless-stopped
 
   backend:
-    image: ghcr.io/${GITHUB_REPOSITORY:-your-username/footprint}/backend:main
+    image: ghcr.io/baoxinwen/footprint/backend:main
     build:
       context: ./backend
       dockerfile: Dockerfile

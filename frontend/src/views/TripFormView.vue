@@ -10,6 +10,7 @@ import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import { useTheme } from '../composables/useTheme'
 import { renderMarkdown } from '../utils/markdown'
+import { getConfig } from '../api/config'
 
 const route = useRoute()
 const router = useRouter()
@@ -44,9 +45,10 @@ let tempIdCounter = 0
 onMounted(async () => {
   // 加载高德地图 SDK
   try {
-    ;(window as any)._AMapSecurityConfig = { securityJsCode: import.meta.env.VITE_AMAP_SECURITY_CODE }
+    const config = await getConfig()
+    ;(window as any)._AMapSecurityConfig = { securityJsCode: '' }
     AMapInstance = await AMapLoader.load({
-      key: import.meta.env.VITE_AMAP_KEY,
+      key: config.amap_key,
       version: '2.0',
       plugins: ['AMap.PlaceSearch', 'AMap.Geocoder'],
     })
