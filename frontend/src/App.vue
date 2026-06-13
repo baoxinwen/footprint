@@ -9,7 +9,7 @@ import type { SearchResult } from './types'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
-const { isDark, themeMode, setTheme } = useTheme()
+const { themeMode, setTheme } = useTheme()
 
 const isSharePage = computed(() => route.path.startsWith('/share'))
 const isLoginPage = computed(() => route.path === '/login')
