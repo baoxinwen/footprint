@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Data
+data/
+uploads/
+*.db
+*.sqlite
+
+# Node
+node_modules/
+frontend/dist/
+
+# Test
+test/reports/
+test/.pytest_cache/
+test/__pycache__/
+.coverage
+htmlcov/
+
+# E2E test artifacts
+frontend/test-results/
+frontend/e2e-report/
+frontend/playwright-report/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml

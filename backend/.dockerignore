@@ -1,0 +1,14 @@
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.git
+.github
+.env
+.env.*
+data
+uploads
+test
+docs
+*.md
+!requirements.txt
