@@ -50,5 +50,19 @@ frontend/playwright-report/
 .DS_Store
 Thumbs.db
 
+# Claude
+.claude/
+
+# Docs
+docs/
+
+# Agent config
+AGENTS.md
+DEPLOY.md
+
+# Reports
+CODE_REVIEW_REPORT*.md
+
 # Docker
 docker-compose.override.yml
+docker.log
