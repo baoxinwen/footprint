@@ -1,9 +1,6 @@
 services:
   frontend:
     image: ghcr.io/baoxinwen/footprint/frontend:main
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
     ports:
       - "80:80"
     depends_on:
@@ -13,9 +10,6 @@ services:
 
   backend:
     image: ghcr.io/baoxinwen/footprint/backend:main
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     volumes:

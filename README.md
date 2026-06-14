@@ -44,11 +44,7 @@ cp .env.example .env
 ### 3. Docker 部署
 
 ```bash
-# 开发模式（本地构建）
 docker-compose up -d
-
-# 生产模式（拉取预构建镜像）
-docker-compose -f docker-compose.prod.yml up -d
 ```
 
 ### 4. 访问应用
@@ -121,7 +117,6 @@ npm run test:e2e
 |------|------|------|
 | `JWT_SECRET` | 是 | JWT 签名密钥 |
 | `AMAP_KEY` | 否 | 高德地图 API Key |
-| `GITHUB_REPOSITORY` | 否 | GitHub 仓库路径（用于拉取预构建镜像） |
 
 ## 数据持久化
 
