@@ -13,8 +13,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - db-data:/app/data
-      - upload-data:/app/uploads
+      - ./data/db:/app/data
+      - ./data/uploads:/app/uploads
     environment:
       - JWT_SECRET=${JWT_SECRET}
       - AMAP_KEY=${AMAP_KEY}
@@ -27,7 +27,3 @@ services:
       retries: 3
       start_period: 10s
     restart: unless-stopped
-
-volumes:
-  db-data:
-  upload-data:
