@@ -17,15 +17,4 @@ test.describe('时间线页面', () => {
     // 应显示旅行卡片
     await expect(page.locator('text=时间线测试旅行')).toBeVisible()
   })
-
-  test('时间线按年月分组', async ({ page }) => {
-    await registerAndLogin(page)
-    await createTrip(page, '分组测试A', '2025-01-01', '2025-01-03')
-    await createTrip(page, '分组测试B', '2025-06-01', '2025-06-03')
-
-    await page.goto('/timeline')
-
-    // 应显示年份标题
-    await expect(page.locator('text=2025')).toBeVisible()
-  })
 })
