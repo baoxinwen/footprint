@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
@@ -25,6 +26,8 @@ from app.utils.rate_limit import (
     record_password_change,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/auth", tags=["认证"])
 
 
@@ -34,6 +37,7 @@ def register(req: RegisterRequest, request: Request, db: Session = Depends(get_d
     check_register_rate(ip)
 
     if db.query(User).filter(User.username == req.username).first():
+        logger.warning(f"注册失败: 用户名 '{req.username}' 已被占用 (IP: {ip})")
         raise HTTPException(status_code=400, detail="该用户名已被占用")
 
     user = User(username=req.username, password_hash=hash_password(req.password))
@@ -53,6 +57,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == req.username).first()
     if not user or not verify_password(req.password, user.password_hash):
         record_login_failure(req.username, ip)
+        logger.warning(f"登录失败: 用户名或密码错误 '{req.username}' (IP: {ip})")
         raise HTTPException(status_code=400, detail="用户名或密码错误")
 
     clear_login_attempts(req.username, ip)
@@ -69,12 +74,15 @@ def change_password(
     check_password_change_cooldown(user_id)
 
     if req.new_password != req.confirm_password:
+        logger.warning(f"修改密码失败: 两次输入不一致 (user_id: {user_id})")
         raise HTTPException(status_code=400, detail="两次输入的新密码不一致")
 
     user = db.get(User, user_id)
     if not user:
+        logger.error(f"修改密码失败: 用户不存在 (user_id: {user_id})")
         raise HTTPException(status_code=404, detail="用户不存在")
     if not verify_password(req.current_password, user.password_hash):
+        logger.warning(f"修改密码失败: 当前密码错误 (user_id: {user_id})")
         raise HTTPException(status_code=400, detail="当前密码错误")
 
     user.password_hash = hash_password(req.new_password)

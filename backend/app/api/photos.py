@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -10,6 +11,8 @@ from app.models.trip import Trip
 from app.models.photo import Photo
 from app.schemas.photo import PhotoResponse
 from app.utils.image import validate_image, save_image, delete_image_files
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/photos", tags=["照片管理"])
 
@@ -39,15 +42,18 @@ async def upload_photo(
         Trip.user_id == user_id,
     ).first()
     if not location:
+        logger.warning(f"照片上传失败: 地点不存在 (location_id: {location_id}, user_id: {user_id})")
         raise HTTPException(status_code=404, detail="地点不存在")
 
     # Validate file size
     file_bytes = await file.read()
     if len(file_bytes) > settings.MAX_FILE_SIZE:
+        logger.warning(f"照片上传失败: 文件过大 ({len(file_bytes)} bytes, 限制: {settings.MAX_FILE_SIZE})")
         raise HTTPException(status_code=400, detail="文件大小超过 10MB 限制")
 
     # Validate file type
     if not validate_image(file_bytes):
+        logger.warning(f"照片上传失败: 非法图片格式 (filename: {file.filename})")
         raise HTTPException(status_code=400, detail="不是合法的图片文件")
 
     # Save

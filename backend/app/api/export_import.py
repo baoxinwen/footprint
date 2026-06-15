@@ -171,15 +171,18 @@ async def import_trips(
     db: Session = Depends(get_db),
 ):
     if not file.filename or not file.filename.endswith(".json"):
+        logger.warning(f"导入失败: 非 JSON 文件 (filename: {file.filename})")
         raise HTTPException(status_code=400, detail="请上传 JSON 文件")
 
     content = await file.read()
     if len(content) > settings.MAX_IMPORT_SIZE:
+        logger.warning(f"导入失败: 文件过大 ({len(content)} bytes)")
         raise HTTPException(status_code=400, detail="文件大小超过 1MB 限制")
 
     try:
         data = json.loads(content)
     except json.JSONDecodeError:
+        logger.warning(f"导入失败: JSON 格式错误 (filename: {file.filename})")
         raise HTTPException(status_code=400, detail="JSON 格式错误")
 
     trips_data = data if isinstance(data, list) else [data]

@@ -1,8 +1,11 @@
+import logging
 import httpx
 from fastapi import APIRouter, Depends, Query, HTTPException
 
 from app.core.security import get_current_user_id
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/amap", tags=["高德地图"])
 
@@ -35,6 +38,7 @@ async def search_poi(
 ):
     """代理高德 POI 搜索，避免前端被广告拦截器屏蔽。"""
     if not settings.AMAP_KEY:
+        logger.error("AMAP_KEY 未配置，无法进行 POI 搜索")
         raise HTTPException(status_code=500, detail="AMAP_KEY 未配置")
     url = "https://restapi.amap.com/v3/place/text"
     params = {
@@ -46,10 +50,15 @@ async def search_poi(
         "extensions": "base",
     }
     client = await get_http_client()
-    resp = await client.get(url, params=params)
-    data = resp.json()
+    try:
+        resp = await client.get(url, params=params)
+        data = resp.json()
+    except Exception as e:
+        logger.error(f"高德 API 请求失败: {e}")
+        raise HTTPException(status_code=502, detail="地图服务请求失败")
 
     if data.get("status") != "1" or not data.get("pois"):
+        logger.info(f"POI 搜索无结果: keywords={keywords}, city={city}")
         return []
 
     results = []
