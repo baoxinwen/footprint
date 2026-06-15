@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # Upload
     UPLOAD_DIR: Path = Path("uploads")
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
+    MAX_IMPORT_SIZE: int = 1 * 1024 * 1024  # 1MB
     THUMBNAIL_WIDTH: int = 300
     THUMBNAIL_QUALITY: int = 85
     MAX_IMAGE_PIXELS: int = 100_000_000
