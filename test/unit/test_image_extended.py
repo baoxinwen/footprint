@@ -28,6 +28,7 @@ class TestSaveImage:
             mock_settings.ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp"}
             mock_settings.UPLOAD_DIR = tmp_path
             mock_settings.THUMBNAIL_WIDTH = 300
+            mock_settings.THUMBNAIL_QUALITY = 85
 
             result = save_image(file_bytes, "test.jpg")
             assert "original_path" in result
@@ -46,6 +47,7 @@ class TestSaveImage:
             mock_settings.ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp"}
             mock_settings.UPLOAD_DIR = tmp_path
             mock_settings.THUMBNAIL_WIDTH = 300
+            mock_settings.THUMBNAIL_QUALITY = 85
 
             result = save_image(file_bytes, "test.png")
             assert result["original_path"].endswith(".png")
@@ -74,6 +76,7 @@ class TestSaveImage:
             mock_settings.ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp"}
             mock_settings.UPLOAD_DIR = tmp_path
             mock_settings.THUMBNAIL_WIDTH = 300
+            mock_settings.THUMBNAIL_QUALITY = 85
 
             result = save_image(file_bytes, "photo")
             # 无扩展名时 ext 为 "jpg"（因为 "photo".rsplit(".", 1)[-1] == "photo"，不在允许列表中）
@@ -93,6 +96,7 @@ class TestSaveImage:
             mock_settings.ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp"}
             mock_settings.UPLOAD_DIR = tmp_path
             mock_settings.THUMBNAIL_WIDTH = 300
+            mock_settings.THUMBNAIL_QUALITY = 85
 
             result = save_image(file_bytes, "test.gif")
             assert result["original_path"].endswith(".gif")

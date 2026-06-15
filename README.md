@@ -10,8 +10,9 @@
 - **游记撰写** — Markdown 编辑器，实时预览
 - **时间线** — 按年月分组回顾旅行足迹
 - **统计分析** — 年度/月度统计，城市排行榜
+- **全局搜索** — 搜索旅行、地点、城市
 - **分享功能** — 生成分享链接（30天过期）
-- **导入导出** — JSON/Markdown 格式
+- **导入导出** — JSON/Markdown 格式，支持批量导入
 - **深色模式** — 自动跟随系统或手动切换
 - **响应式设计** — 适配桌面端和移动端
 
@@ -23,6 +24,7 @@
 | 后端 | Python FastAPI + SQLAlchemy + Pillow |
 | 数据库 | SQLite |
 | 地图 | 高德地图 JS API v2.0 |
+| 测试 | pytest (后端) + Vitest (前端) + Playwright (E2E) |
 | 部署 | Docker Compose（nginx + uvicorn） |
 
 ## 快速开始
@@ -84,8 +86,8 @@ pytest
 cd frontend
 npm run test
 
-# E2E 测试
-npm run test:e2e
+# E2E 测试 (需要启动后端和前端服务)
+npx playwright test
 ```
 
 ## 项目结构
@@ -93,20 +95,25 @@ npm run test:e2e
 ```
 ├── backend/               # FastAPI 后端
 │   └── app/
-│       ├── api/           # 路由模块
+│       ├── api/           # 路由模块 (auth, trips, photos, shares, stats, timeline, export_import, amap, account, search)
 │       ├── core/          # 配置、数据库、安全
-│       ├── models/        # SQLAlchemy 模型
+│       ├── models/        # SQLAlchemy 模型 (user, trip, location, photo, share)
 │       ├── schemas/       # Pydantic 请求/响应模型
-│       └── utils/         # 工具函数
+│       └── utils/         # 工具函数 (image, rate_limit, escape, zip_utils)
 ├── frontend/              # Vue 3 前端
 │   ├── src/
 │   │   ├── api/           # API 请求封装
-│   │   ├── views/         # 页面组件
-│   │   ├── components/    # 共享组件
+│   │   ├── views/         # 页面组件 (10 个页面)
+│   │   ├── components/    # 共享组件 (PhotoViewer, EmptyState)
 │   │   ├── stores/        # Pinia 状态管理
+│   │   ├── composables/   # 组合式函数 (useTheme)
+│   │   ├── utils/         # 工具函数 (format, markdown)
 │   │   └── router/        # Vue Router
-│   └── e2e/               # Playwright E2E 测试
+│   └── e2e/               # Playwright E2E 测试 (13 个测试文件)
 ├── test/                  # 后端 pytest 测试
+│   ├── unit/              # 单元测试 (8 个文件)
+│   ├── integration/       # 集成测试 (12 个文件)
+│   └── e2e/               # 端到端测试
 ├── docker-compose.yml     # Docker 部署配置
 └── .github/workflows/     # CI/CD 自动构建
 ```
@@ -116,7 +123,7 @@ npm run test:e2e
 | 变量 | 必填 | 说明 |
 |------|------|------|
 | `JWT_SECRET` | 是 | JWT 签名密钥 |
-| `AMAP_KEY` | 否 | 高德地图 API Key |
+| `AMAP_KEY` | 否 | 高德地图 API Key（POI 搜索功能需要） |
 
 ## 数据持久化
 

@@ -53,6 +53,7 @@ def health():
 
 @app.get("/api/config")
 def get_config():
+    """前端需要 AMAP_KEY 初始化地图（公开 key，非敏感信息）。"""
     return {
         "amap_key": settings.AMAP_KEY,
     }

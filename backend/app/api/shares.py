@@ -1,3 +1,4 @@
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -11,6 +12,8 @@ from app.models.share import Share
 from app.models.trip import Trip
 from app.schemas.share import ShareResponse
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/shares", tags=["分享"])
 
 
@@ -22,6 +25,7 @@ def create_share(
 ):
     trip = db.query(Trip).filter(Trip.id == trip_id, Trip.user_id == user_id).first()
     if not trip:
+        logger.warning(f"创建分享失败: 旅行不存在 (trip_id: {trip_id}, user_id: {user_id})")
         raise HTTPException(status_code=404, detail="旅行不存在")
 
     # Reuse existing valid share
@@ -56,16 +60,19 @@ def create_share(
 def view_share(token: str, db: Session = Depends(get_db)):
     share = db.query(Share).filter(Share.token == token).first()
     if not share:
+        logger.info(f"查看分享失败: 链接不存在 (token: {token[:8]}...)")
         raise HTTPException(status_code=404, detail="分享链接不存在")
 
     # SQLite 存储 naive datetime，统一使用 naive UTC 时间比较
     now_utc = datetime.now(timezone.utc)
     now = now_utc.replace(tzinfo=None) if share.expires_at.tzinfo is None else now_utc
     if share.expires_at < now:
+        logger.info(f"查看分享失败: 链接已过期 (token: {token[:8]}...)")
         raise HTTPException(status_code=410, detail="分享链接已过期")
 
     trip = db.get(Trip, share.trip_id)
     if not trip:
+        logger.warning(f"查看分享失败: 旅行已删除 (trip_id: {share.trip_id})")
         raise HTTPException(status_code=404, detail="旅行已被删除")
 
     from app.api.trips import _trip_to_response, _location_to_response

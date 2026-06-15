@@ -25,10 +25,6 @@ export function getCityMarkers() {
   return request.get<CityMarker[]>('/stats/map/cities')
 }
 
-export function getTripRoute(tripId: number) {
-  return request.get<TripRoute>(`/stats/map/route/${tripId}`)
-}
-
 export function getAllRoutes() {
   return request.get<TripRoute[]>('/stats/map/routes')
 }
