@@ -3,9 +3,9 @@ import logging
 
 from PIL import Image
 
-Image.MAX_IMAGE_PIXELS = 100_000_000
-
 from app.core.config import settings
+
+Image.MAX_IMAGE_PIXELS = settings.MAX_IMAGE_PIXELS
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ def validate_image(file_bytes: bytes) -> bool:
         img.verify()
         # Re-open after verify (verify invalidates the image)
         img = Image.open(BytesIO(file_bytes))
-        if img.width * img.height > 100_000_000:
+        if img.width * img.height > settings.MAX_IMAGE_PIXELS:
             return False
         return True
     except Exception:
@@ -52,7 +52,7 @@ def save_image(file_bytes: bytes, original_filename: str) -> dict:
     ratio = width / img.width
     height = int(img.height * ratio)
     thumb = img.resize((width, height), Image.LANCZOS)
-    thumb.save(thumbnail_path, "JPEG", quality=85)
+    thumb.save(thumbnail_path, "JPEG", quality=settings.THUMBNAIL_QUALITY)
 
     return {
         "original_path": original_name,

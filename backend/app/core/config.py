@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     UPLOAD_DIR: Path = Path("uploads")
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
     THUMBNAIL_WIDTH: int = 300
+    THUMBNAIL_QUALITY: int = 85
+    MAX_IMAGE_PIXELS: int = 100_000_000
+    MAX_ZIP_SIZE: int = 500 * 1024 * 1024  # 500MB
     ALLOWED_EXTENSIONS: set = {"jpg", "jpeg", "png", "gif", "webp"}
 
     # Amap

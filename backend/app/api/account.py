@@ -83,7 +83,6 @@ def export_all_with_photos(
     zip_buffer = io.BytesIO()
 
     # 添加大小限制，与 export_markdown 保持一致
-    MAX_ZIP_SIZE = 500 * 1024 * 1024  # 500MB
     total_size = 0
     skipped_photos = 0
 
@@ -118,7 +117,7 @@ def export_all_with_photos(
                         photo_path = settings.UPLOAD_DIR / photo.original_path
                         if photo_path.exists():
                             file_size = photo_path.stat().st_size
-                            if total_size + file_size > MAX_ZIP_SIZE:
+                            if total_size + file_size > settings.MAX_ZIP_SIZE:
                                 skipped_photos += 1
                                 logger.warning(f"导出大小超限，跳过照片: {photo.file_name}")
                                 continue
