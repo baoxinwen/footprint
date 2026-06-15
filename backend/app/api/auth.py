@@ -72,6 +72,8 @@ def change_password(
         raise HTTPException(status_code=400, detail="两次输入的新密码不一致")
 
     user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
     if not verify_password(req.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="当前密码错误")
 

@@ -52,16 +52,17 @@ async def search_poi(
     if data.get("status") != "1" or not data.get("pois"):
         return []
 
-    return [
-        {
-            "name": poi["name"],
+    results = []
+    for poi in data.get("pois", []):
+        location = poi.get("location", "")
+        parts = location.split(",") if location else []
+        lng = float(parts[0]) if len(parts) >= 1 else 0.0
+        lat = float(parts[1]) if len(parts) >= 2 else 0.0
+        results.append({
+            "name": poi.get("name", ""),
             "address": poi.get("address", ""),
-            "location": {
-                "lng": float(poi["location"].split(",")[0]),
-                "lat": float(poi["location"].split(",")[1]),
-            },
+            "location": {"lng": lng, "lat": lat},
             "cityname": poi.get("cityname", ""),
             "pname": poi.get("pname", ""),
-        }
-        for poi in data["pois"]
-    ]
+        })
+    return results
