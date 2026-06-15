@@ -12,27 +12,32 @@ test/
 ├── test-plan.md               ← 测试计划文档
 │
 ├── unit/                      ← 单元测试
-│   ├── test_security.py       ← 密码加密、JWT（TC-AUTH-005/006, TC-SEC-003）
-│   ├── test_image.py          ← 图片验证（TC-PHOTO-001/003/004）
-│   ├── test_rate_limit.py     ← 频率限制（TC-AUTH-008）
-│   ├── test_schemas.py        ← Pydantic 校验（TC-TRIP-002/003, TC-AUTH-003/004）
+│   ├── test_security.py       ← 密码加密、JWT
+│   ├── test_image.py          ← 图片验证
+│   ├── test_image_extended.py ← 图片处理扩展测试
+│   ├── test_rate_limit.py     ← 频率限制
+│   ├── test_rate_limit_extended.py ← 频率限制扩展测试
+│   ├── test_schemas.py        ← Pydantic 校验
+│   ├── test_schemas_extended.py ← Schema 扩展测试
 │   └── test_escape.py         ← LIKE 转义工具
 │
 ├── integration/               ← 集成测试
-│   ├── test_auth.py           ← 账号系统（TC-AUTH-001 ~ TC-AUTH-011, TC-SEC-001/002）
+│   ├── test_auth.py           ← 账号系统（注册、登录、修改密码、安全）
 │   ├── test_account.py        ← 账号模块（账号信息、导出）
-│   ├── test_trips.py          ← 旅行管理（TC-TRIP-001 ~ TC-TRIP-014）
-│   ├── test_photos.py         ← 照片管理（TC-PHOTO-001 ~ TC-PHOTO-007）
-│   ├── test_export_import.py  ← 导入导出（TC-EXP-001 ~ TC-EXP-005）
-│   ├── test_shares.py         ← 分享功能（TC-SHARE-001 ~ TC-SHARE-005）
-│   ├── test_stats.py          ← 统计分析（TC-STATS-001 ~ TC-STATS-006）
-│   ├── test_timeline.py       ← 时间线（TC-TIME-001/002）
+│   ├── test_trips.py          ← 旅行管理（CRUD、分页、搜索、排序、数据隔离）
+│   ├── test_photos.py         ← 照片管理（上传、列表、删除、访问控制）
+│   ├── test_export_import.py  ← 导入导出（JSON、Markdown）
+│   ├── test_export_import_extended.py ← 导入导出扩展测试
+│   ├── test_shares.py         ← 分享功能（创建、查看、过期）
+│   ├── test_stats.py          ← 统计分析（概览、排行、地图、年度/月度）
+│   ├── test_timeline.py       ← 时间线
 │   ├── test_search.py         ← 全局搜索
 │   ├── test_photo_map.py      ← 照片地图标记
 │   └── test_amap.py           ← 高德地图 POI 搜索（mock 外部请求）
 │
 ├── e2e/                       ← 端到端测试
-│   └── test_e2e_flow.py       ← 完整用户流程（注册→登录→创建→上传→导出→分享→改密→删除）
+│   ├── test_e2e_flow.py       ← 完整用户流程（注册→登录→创建→上传→导出→分享→改密→删除）
+│   └── test_deployed.py       ← 部署实例测试（针对 Docker 部署）
 │
 └── reports/                   ← 测试报告输出目录
     ├── report.html            ← pytest-html 生成的测试报告
@@ -113,6 +118,7 @@ open reports/coverage/index.html    # macOS
 | 单元测试 | 验证独立函数正确性 | pytest | 无 |
 | 集成测试 | 验证 API 接口 + 数据库交互 | pytest + TestClient | SQLite 内存 |
 | E2E 测试 | 验证完整用户流程 | pytest + TestClient | SQLite 内存 |
+| 部署测试 | 验证 Docker 部署实例 | pytest + requests | 真实数据库 |
 
 ## Fixtures 说明
 
@@ -129,6 +135,29 @@ open reports/coverage/index.html    # macOS
 | `test_webp_bytes` | 程序生成的测试 WebP |
 | `test_gif_bytes` | 程序生成的测试 GIF |
 | `upload_dir` | 临时上传目录（测试后自动清理） |
+
+## 部署实例测试
+
+`test_deployed.py` 包含针对 Docker 部署实例的测试，覆盖：
+
+- 健康检查（前端、后端、API 代理、CSP 头）
+- 认证系统（注册、登录、修改密码）
+- 旅行管理（CRUD、分页、数据隔离）
+- 地点管理（添加、删除）
+- 照片管理（上传、列表、删除）
+- 导入导出（JSON、Markdown、批量导入）
+- 统计分析（概览、城市排行、地图标记、路线）
+- 时间线
+- 分享功能（创建、查看、复用）
+- 搜索功能
+- 账户管理
+
+运行方式：
+
+```bash
+cd test
+pytest test_deployed.py -v
+```
 
 ## 用例 ID 对照
 
