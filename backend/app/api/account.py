@@ -2,10 +2,9 @@ import json
 import io
 import zipfile
 import logging
-from datetime import datetime
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -14,8 +13,6 @@ from app.core.security import get_current_user_id
 from app.core.config import settings
 from app.models.user import User
 from app.models.trip import Trip
-from app.models.location import Location
-from app.models.photo import Photo
 
 logger = logging.getLogger(__name__)
 

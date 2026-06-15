@@ -13,7 +13,6 @@ from app.core.database import get_db
 from app.core.security import get_current_user_id
 from app.models.trip import Trip
 from app.models.location import Location
-from app.models.photo import Photo
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)

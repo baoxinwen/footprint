@@ -1,8 +1,7 @@
 import logging
-from datetime import datetime, timezone, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -10,7 +9,6 @@ from app.core.database import get_db
 from app.core.security import get_current_user_id
 from app.models.trip import Trip
 from app.models.location import Location
-from app.models.photo import Photo
 from app.schemas.trip import TripCreate, TripUpdate, TripResponse, TripDetailResponse
 from app.schemas.location import LocationCreate, LocationUpdate, LocationResponse, SortOrderUpdate
 from app.utils.escape import escape_like

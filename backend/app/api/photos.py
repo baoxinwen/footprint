@@ -1,7 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from pathlib import Path
 
 from app.core.database import get_db
 from app.core.security import get_current_user_id
