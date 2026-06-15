@@ -66,3 +66,6 @@ CODE_REVIEW_REPORT*.md
 # Docker
 docker-compose.override.yml
 docker.log
+
+# Test data
+test-data.json
