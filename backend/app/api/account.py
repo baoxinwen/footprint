@@ -95,5 +95,5 @@ def export_all_with_photos(
     return StreamingResponse(
         zip_buffer,
         media_type="application/zip",
-        headers=build_export_headers(quote("足迹数据备份.zip"), total_skipped),
+        headers=build_export_headers("足迹数据备份.zip", total_skipped),
     )

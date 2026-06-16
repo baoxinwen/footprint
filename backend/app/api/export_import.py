@@ -86,7 +86,7 @@ def _build_markdown(trip: Trip, locations: list) -> str:
             md_lines.append("**照片：**")
             md_lines.append("")
             for photo in loc.photos:
-                md_lines.append(f"![{photo.file_name}](photos/{_sanitize(loc.name)}/{photo.file_name})")
+                md_lines.append(f"![{photo.file_name}](photos/{_sanitize(loc.name)}/{_sanitize(photo.file_name)})")
                 md_lines.append("")
 
         if loc.note:
@@ -127,7 +127,7 @@ def export_markdown(
     )
 
 
-def _validate_trip_data(trip_data: dict, idx: int, db: Session, user_id: int) -> None:
+def _import_trip_data(trip_data: dict, idx: int, db: Session, user_id: int) -> None:
     """验证并导入单条旅行数据。"""
     trip = Trip(
         user_id=user_id,
@@ -176,8 +176,9 @@ async def import_trips(
 
     content = await file.read()
     if len(content) > settings.MAX_IMPORT_SIZE:
+        limit_mb = settings.MAX_IMPORT_SIZE // (1024 * 1024)
         logger.warning(f"导入失败: 文件过大 ({len(content)} bytes)")
-        raise HTTPException(status_code=400, detail="文件大小超过 1MB 限制")
+        raise HTTPException(status_code=400, detail=f"文件大小超过 {limit_mb}MB 限制")
 
     try:
         data = json.loads(content)
@@ -190,10 +191,13 @@ async def import_trips(
     imported = 0
     errors = []
     for idx, trip_data in enumerate(trips_data):
+        savepoint = db.begin_nested()
         try:
-            _validate_trip_data(trip_data, idx, db, user_id)
+            _import_trip_data(trip_data, idx, db, user_id)
+            savepoint.commit()
             imported += 1
         except (KeyError, ValueError) as e:
+            savepoint.rollback()
             errors.append(f"第 {idx + 1} 条记录导入失败: {str(e)}")
             continue
 

@@ -50,8 +50,9 @@ frontend/playwright-report/
 .DS_Store
 Thumbs.db
 
-# Claude
+# Claude / Mimocode
 .claude/
+.mimocode/
 
 # Docs
 docs/
