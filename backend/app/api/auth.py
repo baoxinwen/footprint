@@ -71,16 +71,16 @@ def change_password(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
+    user = db.get(User, user_id)
+    if not user:
+        logger.error(f"修改密码失败: 用户不存在 (user_id: {user_id})")
+        raise HTTPException(status_code=404, detail="用户不存在")
+
     check_password_change_cooldown(user_id)
 
     if req.new_password != req.confirm_password:
         logger.warning(f"修改密码失败: 两次输入不一致 (user_id: {user_id})")
         raise HTTPException(status_code=400, detail="两次输入的新密码不一致")
-
-    user = db.get(User, user_id)
-    if not user:
-        logger.error(f"修改密码失败: 用户不存在 (user_id: {user_id})")
-        raise HTTPException(status_code=404, detail="用户不存在")
     if not verify_password(req.current_password, user.password_hash):
         logger.warning(f"修改密码失败: 当前密码错误 (user_id: {user_id})")
         raise HTTPException(status_code=400, detail="当前密码错误")

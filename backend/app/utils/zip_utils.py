@@ -2,7 +2,6 @@
 import io
 import zipfile
 import logging
-from typing import Optional
 
 from app.core.config import settings
 
@@ -37,12 +36,14 @@ def add_photos_to_zip(
             if not photo_path.exists():
                 continue
             file_size = photo_path.stat().st_size
-            if total_size + file_size > settings.MAX_ZIP_SIZE:
+            estimated_entry_size = file_size + 128
+            if total_size + estimated_entry_size > settings.MAX_ZIP_SIZE:
                 skipped += 1
                 logger.warning(f"导出大小超限，跳过照片: {photo.file_name}")
                 continue
-            zf.write(photo_path, f"photos/{safe_parent}/{safe_loc}/{photo.file_name}")
-            total_size += file_size
+            safe_file = _sanitize(photo.file_name)
+            zf.write(photo_path, f"photos/{safe_parent}/{safe_loc}/{safe_file}")
+            total_size += estimated_entry_size
 
     return skipped
 
