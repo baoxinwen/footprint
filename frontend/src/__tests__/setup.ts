@@ -34,11 +34,24 @@ Object.defineProperty(window, 'matchMedia', {
   })),
 })
 
-// Mock IntersectionObserver
+// Mock IntersectionObserver：observe 即同步回调 isIntersecting=true，
+// 与"元素立即进入视口"语义一致，保证懒加载门控下的既有测试仍然立即加载图片
 class MockIntersectionObserver {
-  observe = vi.fn()
+  callback: IntersectionObserverCallback
+  observe: (target: Element) => void
   unobserve = vi.fn()
   disconnect = vi.fn()
+
+  constructor(callback: IntersectionObserverCallback) {
+    this.callback = callback
+    const instance = this as unknown as IntersectionObserver
+    this.observe = vi.fn((target: Element) => {
+      this.callback(
+        [{ isIntersecting: true, target } as unknown as IntersectionObserverEntry],
+        instance,
+      )
+    })
+  }
 }
 Object.defineProperty(window, 'IntersectionObserver', {
   writable: true,

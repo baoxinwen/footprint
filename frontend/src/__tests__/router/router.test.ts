@@ -47,4 +47,5 @@ describe('Router guards', () => {
     const loginRoute = router.getRoutes().find(r => r.path === '/login')
     expect(loginRoute?.meta?.requiresAuth).toBeFalsy()
   })
+
 })

@@ -5,6 +5,12 @@ import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import { Delete, ArrowDown, ArrowUp, ArrowLeft, ArrowRight, Close, Location, Suitcase, Calendar, DataAnalysis, Search, Setting, SwitchButton, Sunny, Moon, Refresh, MapLocation, Edit, Download, Share, Plus, Monitor, CircleCheck } from '@element-plus/icons-vue'
 
+// 本地打包字体（woff2 按 unicode-range 分包，替代 Google Fonts CDN）
+import '@fontsource/noto-sans-sc/400.css'
+import '@fontsource/noto-sans-sc/500.css'
+import '@fontsource/noto-serif-sc/600.css'
+import '@fontsource/noto-serif-sc/700.css'
+
 import App from './App.vue'
 import router from './router'
 import './assets/main.css'

@@ -7,7 +7,7 @@ test.describe('分享功能', () => {
     await createTrip(page, '分享测试旅行', '2025-12-01', '2025-12-03')
 
     await page.goto('/trips')
-    await page.locator('text=分享测试旅行').first().click()
+    await page.getByRole('button', { name: '查看旅行：分享测试旅行' }).click()
 
     // 点击分享按钮
     await page.locator('button:has-text("分享")').click()

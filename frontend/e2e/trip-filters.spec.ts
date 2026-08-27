@@ -27,7 +27,7 @@ test.describe('旅行筛选和排序', () => {
     await page.locator('select.sort-select').selectOption('name')
 
     // 默认降序，ZZZ 应该在前面
-    await expect(page.locator('.trip-card, .card').first()).toContainText('ZZZ')
+    await expect(page.locator('.card-hit').first()).toHaveAccessibleName(/ZZZ/)
   })
 
   test('清除筛选', async ({ page }) => {

@@ -1,25 +1,31 @@
 <script setup lang="ts">
-import { ref, onMounted, shallowRef } from 'vue'
+import { ref, onMounted, onUnmounted, shallowRef } from 'vue'
 import { useRouter } from 'vue-router'
 import AMapLoader from '@amap/amap-jsapi-loader'
 import { ElMessage } from 'element-plus'
+import { Camera } from '@element-plus/icons-vue'
 import { getCityMarkers, getMapStats, getAllRoutes, getPhotoMarkers } from '../api/stats'
 import { getConfig } from '../api/config'
 import EmptyState from '../components/EmptyState.vue'
 import PhotoViewer from '../components/PhotoViewer.vue'
 import type { CityMarker, MapStats, TripRoute, PhotoMapMarker } from '../types'
+import { acquireImageResource, type ImageResource } from '../utils/authenticatedImage'
 
 const router = useRouter()
 const stats = ref<MapStats>({ trip_count: 0, location_count: 0, city_count: 0, province_count: 0 })
+const statsLoaded = ref(false)
 const cityMarkers = ref<CityMarker[]>([])
 const routes = ref<TripRoute[]>([])
 const selectedTripId = ref<number | null>(null)
-const showStats = ref(true)
+// PRD 4.5：移动端统计面板默认折叠，桌面端默认展开
+const showStats = ref(window.innerWidth >= 768)
 const map = shallowRef<any>(null)
 let AMapRef: any = null
 const mapOverlays: any[] = []
 let scaleControl: any = null
 let toolBarControl: any = null
+let fitViewTimer: ReturnType<typeof setTimeout> | null = null
+let disposed = false
 
 // 高德地图官方样式列表
 const mapStyles = [
@@ -54,9 +60,19 @@ let trafficLayer: any = null
 // Photo mode
 const photoMode = ref(false)
 const photoMarkers = ref<PhotoMapMarker[]>([])
-const viewerPhotos = ref<any[]>([])
+// PhotoViewer 只需要这四个字段；照片地图标记数据不含完整 Photo 元数据
+interface ViewerPhoto {
+  id: number
+  original_url: string
+  thumbnail_url: string
+  file_name: string
+}
+const viewerPhotos = ref<ViewerPhoto[]>([])
 const viewerIndex = ref(0)
 const showViewer = ref(false)
+const photoMarkerImageResources: ImageResource[] = []
+let photoMarkerLoadController: AbortController | null = null
+let photoModeRequestId = 0
 
 // Lazy load routes
 const routesLoaded = ref(false)
@@ -82,6 +98,7 @@ onMounted(async () => {
     ])
     stats.value = statsRes.data
     cityMarkers.value = citiesRes.data
+    statsLoaded.value = true
 
     await initMap()
     renderCityMarkers()
@@ -96,18 +113,22 @@ async function initMap() {
   if (!config.amap_key) {
     throw new Error('请填写 AMAP_KEY')
   }
-  ;(window as any)._AMapSecurityConfig = { securityJsCode: '' }
+  ;(window as any)._AMapSecurityConfig = { securityJsCode: config.amap_security_code }
   AMapRef = await AMapLoader.load({
     key: config.amap_key,
     version: '2.0',
     plugins: ['AMap.Scale', 'AMap.ToolBar', 'AMap.TileLayer.Satellite', 'AMap.TileLayer.RoadNet', 'AMap.TileLayer.Traffic'],
   })
 
+  if (disposed) return
   createMap()
 }
 
 function createMap(center?: [number, number], zoom?: number) {
   if (map.value) {
+    clearFitViewTimer()
+    clearOverlays()
+    removeLayerInstances()
     map.value.destroy()
   }
 
@@ -121,9 +142,14 @@ function createMap(center?: [number, number], zoom?: number) {
   toolBarControl = new AMapRef.ToolBar()
   map.value.addControl(scaleControl)
   map.value.addControl(toolBarControl)
+  restoreEnabledLayers()
 }
 
-function onStyleChange(style: string) {
+async function onStyleChange(style: string) {
+  if (!map.value || !AMapRef) {
+    ElMessage.error('地图尚未初始化，请刷新页面重试')
+    return
+  }
   currentStyle.value = style
   localStorage.setItem('mapStyle', style)
 
@@ -136,8 +162,9 @@ function onStyleChange(style: string) {
   createMap(centerArr, zoom)
 
   // 重新绘制覆盖物
-  clearOverlays()
-  if (selectedTripId.value) {
+  if (photoMode.value) {
+    await renderPhotoMarkers()
+  } else if (selectedTripId.value) {
     const route = routes.value.find((r) => r.trip_id === selectedTripId.value)
     if (route) drawRoute(route)
   } else {
@@ -185,7 +212,46 @@ function toggleTraffic() {
   }
 }
 
+function restoreEnabledLayers() {
+  if (!map.value || !AMapRef) return
+  if (showSatellite.value) {
+    satelliteLayer = new AMapRef.TileLayer.Satellite()
+    map.value.add(satelliteLayer)
+  }
+  if (showRoadNet.value) {
+    roadNetLayer = new AMapRef.TileLayer.RoadNet()
+    map.value.add(roadNetLayer)
+  }
+  if (showTraffic.value) {
+    trafficLayer = new AMapRef.TileLayer.Traffic()
+    map.value.add(trafficLayer)
+  }
+}
+
+function removeLayerInstances() {
+  if (map.value) {
+    for (const layer of [satelliteLayer, roadNetLayer, trafficLayer]) {
+      if (layer) {
+        try { map.value.remove(layer) } catch {}
+      }
+    }
+  }
+  satelliteLayer = null
+  roadNetLayer = null
+  trafficLayer = null
+}
+
+function clearFitViewTimer() {
+  if (fitViewTimer) {
+    clearTimeout(fitViewTimer)
+    fitViewTimer = null
+  }
+}
+
 function clearOverlays() {
+  photoMarkerLoadController?.abort()
+  photoMarkerLoadController = null
+  photoMarkerImageResources.splice(0).forEach((resource) => resource.release())
   if (!map.value) return
   mapOverlays.forEach((o) => {
     try { map.value.remove(o) } catch {}
@@ -197,11 +263,15 @@ function renderCityMarkers() {
   if (!map.value || !AMapRef) return
 
   cityMarkers.value.forEach((city) => {
-    const size = Math.max(32, Math.min(city.city.length * 14 + 16, 80))
+    const size = Math.max(34, Math.min(city.city.length * 14 + 18, 80))
+    const scale = Math.min(1 + (city.count - 1) * 0.09, 1.32)
+    const badge = city.count > 1
+      ? `<span style="position:absolute;top:-8px;right:-8px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:var(--color-accent);color:var(--color-on-accent);font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.25);">${city.count}</span>`
+      : ''
     const marker = new AMapRef.Marker({
       position: [city.longitude, city.latitude],
       title: `${city.city} (${city.count}次)`,
-      content: `<div style="background: #D4A853; color: white; border-radius: ${size}px; padding: 0 10px; height: ${size}px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.2); white-space: nowrap;">${escapeHtml(city.city)}</div>`,
+      content: `<div style="position:relative;transform:scale(${scale});background:var(--color-primary);color:var(--color-on-primary);border:2px solid rgba(255,255,255,0.92);border-radius:10px;padding:0 12px;height:${size}px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(12,18,15,0.3);white-space:nowrap;">${escapeHtml(city.city)}${badge}</div>`,
       offset: new AMapRef.Pixel(0, -size / 2),
     })
 
@@ -254,14 +324,14 @@ function drawRoute(route: TripRoute) {
       radius: isFirst || isLast ? 8 : 6,
       strokeColor: '#fff',
       strokeWeight: isFirst || isLast ? 3 : 2,
-      fillColor: isFirst ? '#4CAF50' : isLast ? '#F44336' : route.color,
+      fillColor: isFirst ? '#1F5C46' : isLast ? '#C64B36' : route.color,
       fillOpacity: 1,
     })
     map.value.add(marker)
     mapOverlays.push(marker)
 
     // 所有点位都显示名称标签
-    const bgColor = isFirst ? '#4CAF50' : isLast ? '#F44336' : route.color
+    const bgColor = isFirst ? '#1F5C46' : isLast ? '#C64B36' : route.color
     const prefix = isFirst ? '起点' : isLast ? '终点' : `${idx + 1}`
     const label = new AMapRef.Marker({
       position: [loc.longitude, loc.latitude],
@@ -280,7 +350,7 @@ async function selectTrip(tripId: number | null) {
   clearOverlays()
 
   if (photoMode.value) {
-    renderPhotoMarkers()
+    await renderPhotoMarkers()
     return
   }
 
@@ -290,8 +360,10 @@ async function selectTrip(tripId: number | null) {
     if (route) {
       drawRoute(route)
       // 自适应当前绘制的覆盖物，让整条路线全部显示在屏幕中
-      setTimeout(() => {
-        map.value.setFitView(mapOverlays, false, [80, 80, 80, 80])
+      clearFitViewTimer()
+      fitViewTimer = setTimeout(() => {
+        fitViewTimer = null
+        map.value?.setFitView(mapOverlays, false, [80, 80, 80, 80])
       }, 200)
     }
   } else {
@@ -303,26 +375,30 @@ async function selectTrip(tripId: number | null) {
 }
 
 async function togglePhotoMode() {
+  const requestId = ++photoModeRequestId
   photoMode.value = !photoMode.value
   if (photoMode.value) {
     // Load photo markers if not loaded
     if (photoMarkers.value.length === 0) {
       try {
         const { data } = await getPhotoMarkers()
+        if (requestId !== photoModeRequestId || !photoMode.value || disposed) return
         photoMarkers.value = data
       } catch {
+        if (requestId !== photoModeRequestId || !photoMode.value || disposed) return
         ElMessage.error('加载照片数据失败')
         photoMode.value = false
         return
       }
     }
+    if (requestId !== photoModeRequestId || !photoMode.value || disposed) return
     if (photoMarkers.value.length === 0) {
       ElMessage.info('还没有照片，先去上传一些吧')
       photoMode.value = false
       return
     }
     clearOverlays()
-    renderPhotoMarkers()
+    await renderPhotoMarkers()
   } else {
     clearOverlays()
     if (selectedTripId.value) {
@@ -334,12 +410,38 @@ async function togglePhotoMode() {
   }
 }
 
-function renderPhotoMarkers() {
+async function renderPhotoMarkers() {
   if (!map.value || !AMapRef) return
-  photoMarkers.value.forEach((pm) => {
+
+  photoMarkerLoadController?.abort()
+  photoMarkerImageResources.splice(0).forEach((resource) => resource.release())
+  const controller = new AbortController()
+  photoMarkerLoadController = controller
+  const loadedMarkers = await Promise.all(photoMarkers.value.map(async (photoMarker) => {
+    try {
+      const resource = await acquireImageResource(photoMarker.thumbnail_url, controller.signal)
+      return { photoMarker, resource }
+    } catch {
+      return { photoMarker, resource: null }
+    }
+  }))
+
+  if (controller.signal.aborted || photoMarkerLoadController !== controller || disposed) {
+    loadedMarkers.forEach(({ resource }) => resource?.release())
+    return
+  }
+  photoMarkerLoadController = null
+
+  let failedCount = 0
+  loadedMarkers.forEach(({ photoMarker: pm, resource }) => {
+    if (resource) photoMarkerImageResources.push(resource)
+    else failedCount += 1
+    const markerContent = resource
+      ? `<img src="${escapeHtml(resource.src)}" alt="" style="width:100%;height:100%;object-fit:cover;" />`
+      : '<span role="img" aria-label="照片加载失败" style="display:flex;width:100%;height:100%;align-items:center;justify-content:center;background:#e5ebe7;color:#59635e;font-size:11px;">失败</span>'
     const marker = new AMapRef.Marker({
       position: [pm.longitude, pm.latitude],
-      content: `<div style="width:40px;height:40px;border:2px solid #fff;border-radius:6px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.3);cursor:pointer;"><img src="${escapeHtml(pm.thumbnail_url)}" style="width:100%;height:100%;object-fit:cover;" /></div>`,
+      content: `<div style="width:40px;height:40px;border:2px solid #fff;border-radius:6px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.3);cursor:pointer;">${markerContent}</div>`,
       offset: new AMapRef.Pixel(-20, -20),
     })
     marker.on('click', () => {
@@ -355,11 +457,25 @@ function renderPhotoMarkers() {
     map.value.add(marker)
     mapOverlays.push(marker)
   })
+
+  if (failedCount > 0) ElMessage.warning(`${failedCount} 张照片加载失败`)
 }
 
 function toggleStats() {
   showStats.value = !showStats.value
 }
+
+onUnmounted(() => {
+  disposed = true
+  clearFitViewTimer()
+  clearOverlays()
+  removeLayerInstances()
+  map.value?.destroy()
+  map.value = null
+  scaleControl = null
+  toolBarControl = null
+  AMapRef = null
+})
 </script>
 
 <template>
@@ -368,10 +484,10 @@ function toggleStats() {
 
     <!-- Unified control panel -->
     <div class="control-panel" :class="{ collapsed: !showStats }">
-      <div class="panel-header" @click="toggleStats">
+      <button class="panel-header" :aria-expanded="showStats" @click="toggleStats">
         <span class="panel-title">统计概览</span>
-        <span class="toggle-icon">{{ showStats ? '▲' : '▼' }}</span>
-      </div>
+        <el-icon class="toggle-icon"><ArrowUp v-if="showStats" /><ArrowDown v-else /></el-icon>
+      </button>
 
       <template v-if="showStats">
         <!-- Stats -->
@@ -425,7 +541,7 @@ function toggleStats() {
         <!-- Photo mode -->
         <div class="panel-section">
           <button :class="['photo-mode-btn', { active: photoMode }]" @click="togglePhotoMode">
-            <span>📸</span>
+            <el-icon><Camera /></el-icon>
             <span>{{ photoMode ? '退出照片模式' : '照片地图' }}</span>
           </button>
         </div>
@@ -433,9 +549,9 @@ function toggleStats() {
     </div>
 
     <!-- Empty state -->
-    <div v-if="stats.trip_count === 0" class="empty-overlay">
+    <div v-if="statsLoaded && stats.trip_count === 0" class="empty-overlay">
       <EmptyState
-        icon="🗺"
+        icon="map"
         title="标记你的第一个旅行目的地"
         actionText="创建旅行"
         @action="router.push('/trips/new')"
@@ -463,197 +579,203 @@ function toggleStats() {
   height: 100%;
 }
 
-/* Unified Control Panel */
+/* 控制面板：玻璃浮层 */
 .control-panel {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  width: 200px;
-  background: rgba(254, 252, 249, 0.95);
-  backdrop-filter: blur(12px);
-  border-radius: 14px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1), 0 1px 4px rgba(0, 0, 0, 0.05);
+  top: 24px;
+  left: 24px;
+  width: 264px;
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  backdrop-filter: blur(16px) saturate(1.1);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-elevated);
   z-index: 10;
-  border: 1px solid rgba(0, 0, 0, 0.06);
   overflow: hidden;
-  transition: all 0.3s ease;
+  transition: width var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
 }
 
 .control-panel.collapsed {
   width: auto;
-  min-width: 140px;
+  min-width: 156px;
 }
 
 .panel-header {
+  width: 100%;
+  min-height: 48px;
   padding: 12px 16px;
+  border: 0;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
   font-weight: 600;
-  font-size: 14px;
-  color: #2C2C2C;
-  background: rgba(212, 168, 83, 0.06);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  color: var(--color-ink);
+  background: transparent;
+  text-align: left;
   user-select: none;
+  transition: background-color var(--dur-fast) ease;
 }
 
 .panel-header:hover {
-  background: rgba(212, 168, 83, 0.1);
+  background: var(--color-primary-soft);
 }
 
 .toggle-icon {
-  font-size: 10px;
-  color: #8A8279;
-  transition: transform 0.2s;
+  font-size: 12px;
+  color: var(--color-ink-muted);
 }
 
-/* Stats Grid */
+/* 统计格 */
 .panel-stats {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  padding: 14px 16px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0;
+  padding: 12px 8px 16px;
+  border-top: 1px solid var(--color-border);
 }
 
 .stat-item {
   text-align: center;
-  padding: 6px 0;
-  border-radius: 8px;
-  background: rgba(212, 168, 83, 0.04);
+  padding: 8px 4px;
 }
 
 .stat-value {
-  font-size: 20px;
+  font-family: var(--font-serif);
+  font-size: 22px;
   font-weight: 700;
-  color: #D4A853;
-  font-family: 'Noto Serif SC', serif;
   line-height: 1.2;
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .stat-label {
   font-size: 11px;
-  color: #8A8279;
+  color: var(--color-ink-muted);
   margin-top: 2px;
+  letter-spacing: 0.08em;
 }
 
-/* Divider */
 .panel-divider {
   height: 1px;
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--color-border);
   margin: 0 16px;
 }
 
-/* Sections */
+/* 分组 */
 .panel-section {
-  padding: 10px 16px;
+  padding: 12px 16px;
 }
 
 .section-label {
   font-size: 11px;
   font-weight: 600;
-  color: #8A8279;
+  color: var(--color-ink-muted);
+  letter-spacing: 0.1em;
   margin-bottom: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
-/* Layer Toggles */
+/* 图层切换 */
 .layer-toggles {
   display: flex;
-  gap: 4px;
+  gap: 8px;
 }
 
 .layer-btn {
   flex: 1;
+  min-height: 44px;
   padding: 6px 0;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 6px;
-  background: transparent;
-  font-family: 'Noto Sans SC', sans-serif;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font-family: var(--font-sans);
   font-size: 12px;
-  color: #5C5650;
+  color: var(--color-ink-secondary);
   cursor: pointer;
-  transition: all 0.2s ease;
   text-align: center;
+  transition: border-color var(--dur-fast) ease, background-color var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 
 .layer-btn:hover {
-  border-color: rgba(212, 168, 83, 0.3);
-  background: rgba(212, 168, 83, 0.06);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
 }
 
 .layer-btn.active {
-  background: #D4A853;
-  border-color: #D4A853;
-  color: white;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary);
   font-weight: 500;
 }
 
-/* Photo Mode Button */
+/* 照片模式 */
 .photo-mode-btn {
   width: 100%;
+  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   padding: 9px 0;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 8px;
-  background: transparent;
-  font-family: 'Noto Sans SC', sans-serif;
-  font-size: 13px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
   font-weight: 500;
-  color: #5C5650;
+  color: var(--color-ink-secondary);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: border-color var(--dur-fast) ease, background-color var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 
 .photo-mode-btn:hover {
-  border-color: rgba(212, 168, 83, 0.3);
-  background: rgba(212, 168, 83, 0.06);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
 }
 
 .photo-mode-btn.active {
-  background: linear-gradient(135deg, #D4A853 0%, #C49A4A 100%);
-  border-color: transparent;
-  color: white;
-  box-shadow: 0 2px 8px rgba(212, 168, 83, 0.3);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary);
 }
 
-/* Empty State */
+.photo-mode-btn .el-icon {
+  font-size: 17px;
+}
+
+/* 空状态 */
 .empty-overlay {
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(253, 248, 240, 0.85);
+  background: color-mix(in srgb, var(--color-canvas) 82%, transparent);
   z-index: 5;
 }
 
-/* Responsive */
+/* 响应式 */
 @media (max-width: 768px) {
   .control-panel {
-    top: 10px;
-    left: 10px;
-    right: 10px;
+    top: 12px;
+    left: 12px;
+    right: 12px;
     width: auto;
-    border-radius: 12px;
+    max-height: calc(100dvh - 180px);
+    overflow-y: auto;
   }
 
   .control-panel.collapsed {
-    min-width: auto;
+    min-width: 0;
   }
 
   .panel-stats {
-    grid-template-columns: repeat(4, 1fr);
-    gap: 6px;
-    padding: 10px 12px;
-  }
-
-  .stat-item {
-    padding: 4px 0;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding: 10px 4px 12px;
   }
 
   .stat-value {

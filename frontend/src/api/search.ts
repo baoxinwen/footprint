@@ -1,6 +1,10 @@
 import request from './request'
 import type { SearchResult } from '../types'
 
-export function searchAll(q: string) {
-  return request.get<SearchResult>('/search', { params: { q } })
+interface SearchOptions {
+  signal?: AbortSignal
+}
+
+export function searchAll(q: string, options: SearchOptions = {}) {
+  return request.get<SearchResult>('/search', { params: { q }, signal: options.signal })
 }

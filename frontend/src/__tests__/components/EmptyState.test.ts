@@ -24,11 +24,13 @@ describe('EmptyState', () => {
     expect(wrapper.find('.empty-desc').exists()).toBe(false)
   })
 
-  it('renders icon when provided', () => {
+  it('renders a vector icon instead of the icon name as text', () => {
     const wrapper = mount(EmptyState, {
-      props: { title: 'No data', icon: '📅' },
+      props: { title: 'No data', icon: 'calendar' },
+      global: { stubs: { ElIcon: { template: '<span class="el-icon"><slot /></span>' } } },
     })
-    expect(wrapper.text()).toContain('📅')
+    expect(wrapper.find('.empty-icon .el-icon').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('calendar')
   })
 
   it('renders action button when actionText provided', () => {

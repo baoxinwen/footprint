@@ -1,4 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { invalidateAuthSession } from '../utils/authSession'
+import { TOKEN_STORAGE_KEY } from '../utils/storageKeys'
 
 const routes = [
   { path: '/login', name: 'Login', component: () => import('../views/LoginView.vue') },
@@ -21,18 +23,18 @@ const router = createRouter({
 
 router.beforeEach((to, _from, next) => {
   if (to.meta.requiresAuth) {
-    const token = localStorage.getItem('token')
+    const token = localStorage.getItem(TOKEN_STORAGE_KEY)
     if (!token) {
       return next('/login')
     }
     try {
       const payload = JSON.parse(atob(token.split('.')[1]))
       if (payload.exp * 1000 < Date.now()) {
-        localStorage.removeItem('token')
+        invalidateAuthSession()
         return next('/login')
       }
     } catch {
-      localStorage.removeItem('token')
+      invalidateAuthSession()
       return next('/login')
     }
   }

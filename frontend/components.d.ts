@@ -11,6 +11,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AuthenticatedImage: typeof import('./src/components/AuthenticatedImage.vue')['default']
     ElButton: typeof import('element-plus/es')['ElButton']
     ElCol: typeof import('element-plus/es')['ElCol']
     ElDatePicker: typeof import('element-plus/es')['ElDatePicker']
@@ -22,12 +23,18 @@ declare module 'vue' {
     ElOption: typeof import('element-plus/es')['ElOption']
     ElRow: typeof import('element-plus/es')['ElRow']
     ElSelect: typeof import('element-plus/es')['ElSelect']
-    ElTag: typeof import('element-plus/es')['ElTag']
     ElUpload: typeof import('element-plus/es')['ElUpload']
     EmptyState: typeof import('./src/components/EmptyState.vue')['default']
+    MonthBars: typeof import('./src/components/MonthBars.vue')['default']
+    PageHeader: typeof import('./src/components/PageHeader.vue')['default']
+    PhotoGrid: typeof import('./src/components/PhotoGrid.vue')['default']
     PhotoViewer: typeof import('./src/components/PhotoViewer.vue')['default']
+    RankBars: typeof import('./src/components/RankBars.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SkeletonList: typeof import('./src/components/SkeletonList.vue')['default']
+    StatCard: typeof import('./src/components/StatCard.vue')['default']
+    TripCover: typeof import('./src/components/TripCover.vue')['default']
   }
   export interface GlobalDirectives {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

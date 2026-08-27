@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, nextTick, watch } from 'vue'
+import { computed, ref, nextTick, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import { useTheme } from './composables/useTheme'
@@ -16,11 +16,15 @@ const isLoginPage = computed(() => route.path === '/login')
 const showNav = computed(() => !isLoginPage.value && !isSharePage.value)
 
 const navItems = [
-  { path: '/', label: '地图', icon: 'Location' },
-  { path: '/trips', label: '旅行', icon: 'Suitcase' },
-  { path: '/timeline', label: '时间线', icon: 'Calendar' },
-  { path: '/stats', label: '统计', icon: 'DataAnalysis' },
+  { path: '/', label: '地图', icon: 'Location', exact: true },
+  { path: '/trips', label: '旅行', icon: 'Suitcase', exact: false },
+  { path: '/timeline', label: '时间线', icon: 'Calendar', exact: false },
+  { path: '/stats', label: '统计', icon: 'DataAnalysis', exact: false },
 ]
+
+function isActive(path: string, exact: boolean) {
+  return exact ? route.path === path : route.path.startsWith(path)
+}
 
 function handleLogout() {
   auth.logout()
@@ -34,32 +38,65 @@ const searchQuery = ref('')
 const searchResults = ref<SearchResult | null>(null)
 const showSearch = ref(false)
 const searchLoading = ref(false)
-const searchInputRef = ref<HTMLInputElement | null>(null)
+const desktopSearchInputRef = ref<HTMLInputElement | null>(null)
+const mobileSearchInputRef = ref<HTMLInputElement | null>(null)
+const desktopSearchButtonRef = ref<HTMLButtonElement | null>(null)
+const mobileSearchButtonRef = ref<HTMLButtonElement | null>(null)
+type SearchOrigin = 'desktop' | 'mobile'
+let searchOrigin: SearchOrigin | null = null
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+let searchController: AbortController | null = null
+let searchRequestId = 0
 
 watch(showSearch, (val) => {
   if (val) {
-    nextTick(() => searchInputRef.value?.focus())
+    nextTick(() => {
+      const input = searchOrigin === 'mobile' ? mobileSearchInputRef.value : desktopSearchInputRef.value
+      input?.focus()
+    })
   }
 })
 
 function onSearchInput() {
-  if (searchTimer) clearTimeout(searchTimer)
-  if (!searchQuery.value.trim()) {
+  cancelPendingSearch()
+  const query = searchQuery.value.trim()
+  if (!query) {
     searchResults.value = null
     return
   }
+  const requestId = searchRequestId
   searchTimer = setTimeout(async () => {
+    searchTimer = null
+    const controller = new AbortController()
+    searchController = controller
     searchLoading.value = true
     try {
-      const { data } = await searchAll(searchQuery.value.trim())
-      searchResults.value = data
+      const { data } = await searchAll(query, { signal: controller.signal })
+      if (requestId === searchRequestId && !controller.signal.aborted) {
+        searchResults.value = data
+      }
     } catch {
-      searchResults.value = null
+      if (requestId === searchRequestId && !controller.signal.aborted) {
+        searchResults.value = null
+      }
     } finally {
-      searchLoading.value = false
+      if (requestId === searchRequestId) {
+        searchLoading.value = false
+        if (searchController === controller) searchController = null
+      }
     }
   }, 300)
+}
+
+function cancelPendingSearch() {
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+    searchTimer = null
+  }
+  searchController?.abort()
+  searchController = null
+  searchRequestId += 1
+  searchLoading.value = false
 }
 
 function goToTrip(tripId: number) {
@@ -68,19 +105,29 @@ function goToTrip(tripId: number) {
 }
 
 
-function toggleSearch() {
+function toggleSearch(origin: SearchOrigin) {
   if (showSearch.value) {
     closeSearch()
   } else {
+    searchOrigin = origin
     showSearch.value = true
   }
 }
 
 function closeSearch() {
+  const origin = searchOrigin
+  cancelPendingSearch()
   showSearch.value = false
   searchQuery.value = ''
   searchResults.value = null
+  nextTick(() => {
+    const trigger = origin === 'mobile' ? mobileSearchButtonRef.value : desktopSearchButtonRef.value
+    trigger?.focus()
+    if (searchOrigin === origin) searchOrigin = null
+  })
 }
+
+onUnmounted(cancelPendingSearch)
 
 function cycleTheme() {
   const modes = ['auto', 'light', 'dark']
@@ -91,17 +138,18 @@ function cycleTheme() {
 
 <template>
   <div id="app-container">
-    <!-- Desktop nav -->
+    <!-- 桌面导航 -->
     <header v-if="showNav" class="desktop-nav">
       <template v-if="!showSearch">
         <div class="nav-left">
-          <span class="logo" @click="router.push('/')">旅行足迹</span>
-          <nav class="nav-links">
+          <button type="button" class="logo" @click="router.push('/')">旅行足迹</button>
+          <span class="nav-divider" aria-hidden="true"></span>
+          <nav class="nav-links" aria-label="主导航">
             <router-link
               v-for="item in navItems"
               :key="item.path"
               :to="item.path"
-              :class="['nav-link', { active: route.path === item.path }]"
+              :class="['nav-link', { active: isActive(item.path, item.exact) }]"
             >
               <el-icon><component :is="item.icon" /></el-icon>
               <span>{{ item.label }}</span>
@@ -109,37 +157,36 @@ function cycleTheme() {
           </nav>
         </div>
         <div class="nav-right">
-          <button class="nav-btn theme-btn" @click="cycleTheme" :title="`当前: ${themeMode}`">
+          <button class="nav-btn theme-btn" aria-label="切换主题" @click="cycleTheme" :title="`主题：${themeMode === 'auto' ? '跟随系统' : themeMode === 'light' ? '浅色' : '深色'}`">
             <el-icon v-if="themeMode === 'dark'"><Moon /></el-icon>
             <el-icon v-else-if="themeMode === 'light'"><Sunny /></el-icon>
             <el-icon v-else><Refresh /></el-icon>
           </button>
-          <button class="nav-btn search-btn" @click="toggleSearch">
+          <button ref="desktopSearchButtonRef" class="nav-btn search-btn" aria-label="打开搜索" @click="toggleSearch('desktop')">
             <el-icon><Search /></el-icon>
           </button>
-          <button class="nav-btn" @click="goToSettings">
+          <button class="nav-btn" aria-label="打开设置" @click="goToSettings">
             <el-icon><Setting /></el-icon>
           </button>
-          <button class="nav-btn nav-btn-logout" @click="handleLogout">
+          <button class="nav-btn nav-btn-logout" aria-label="退出登录" @click="handleLogout">
             <el-icon><SwitchButton /></el-icon>
           </button>
         </div>
       </template>
 
-      <!-- Inline search bar -->
+      <!-- 内联搜索 -->
       <div v-else class="search-bar">
-        <span class="search-icon">🔍</span>
+        <el-icon class="search-icon"><Search /></el-icon>
         <input
-          ref="searchInputRef"
+          ref="desktopSearchInputRef"
           v-model="searchQuery"
           @input="onSearchInput"
           @keydown.escape="closeSearch"
           placeholder="搜索旅行、地点、城市..."
           class="search-input"
         />
-        <button class="search-close" @click="closeSearch">✕</button>
+        <button class="search-close" aria-label="关闭搜索" @click="closeSearch"><el-icon><Close /></el-icon></button>
 
-        <!-- Results dropdown -->
         <div v-if="searchQuery.trim()" class="search-dropdown">
           <div v-if="searchLoading" class="search-status">搜索中...</div>
           <div v-else-if="searchResults">
@@ -149,33 +196,35 @@ function cycleTheme() {
             <template v-else>
               <div v-if="searchResults.trips.length > 0" class="search-group">
                 <div class="search-group-title">旅行</div>
-                <div
+                <button
                   v-for="trip in searchResults.trips"
                   :key="'t'+trip.id"
+                  type="button"
                   class="search-item"
                   @click="goToTrip(trip.id)"
                 >
-                  <span class="search-item-icon">✈</span>
+                  <span class="search-item-icon"><el-icon><Suitcase /></el-icon></span>
                   <div class="search-item-info">
                     <div class="search-item-name">{{ trip.title }}</div>
                     <div class="search-item-desc">{{ trip.start_date }} ~ {{ trip.end_date }}</div>
                   </div>
-                </div>
+                </button>
               </div>
               <div v-if="searchResults.locations.length > 0" class="search-group">
                 <div class="search-group-title">地点</div>
-                <div
+                <button
                   v-for="loc in searchResults.locations"
                   :key="'l'+loc.id"
+                  type="button"
                   class="search-item"
                   @click="goToTrip(loc.trip_id)"
                 >
-                  <span class="search-item-icon">📍</span>
+                  <span class="search-item-icon"><el-icon><Location /></el-icon></span>
                   <div class="search-item-info">
                     <div class="search-item-name">{{ loc.name }}</div>
                     <div class="search-item-desc">{{ loc.city }} · {{ loc.trip_title }}</div>
                   </div>
-                </div>
+                </button>
               </div>
             </template>
           </div>
@@ -183,38 +232,38 @@ function cycleTheme() {
       </div>
     </header>
 
-    <!-- Mobile top bar -->
+    <!-- 移动端顶栏 -->
     <div v-if="showNav" class="mobile-top-bar">
       <template v-if="!showSearch">
         <span class="mobile-logo">旅行足迹</span>
         <div class="mobile-top-actions">
-          <button class="mobile-action-btn" @click="cycleTheme" :title="`当前: ${themeMode}`">
+          <button class="mobile-action-btn" aria-label="切换主题" @click="cycleTheme">
             <el-icon v-if="themeMode === 'dark'"><Moon /></el-icon>
             <el-icon v-else-if="themeMode === 'light'"><Sunny /></el-icon>
             <el-icon v-else><Refresh /></el-icon>
           </button>
-          <button class="mobile-action-btn" @click="toggleSearch">
+          <button ref="mobileSearchButtonRef" class="mobile-action-btn" aria-label="打开搜索" @click="toggleSearch('mobile')">
             <el-icon><Search /></el-icon>
           </button>
-          <button class="mobile-action-btn" @click="goToSettings">
+          <button class="mobile-action-btn" aria-label="打开设置" @click="goToSettings">
             <el-icon><Setting /></el-icon>
           </button>
-          <button class="mobile-action-btn" @click="handleLogout">
+          <button class="mobile-action-btn" aria-label="退出登录" @click="handleLogout">
             <el-icon><SwitchButton /></el-icon>
           </button>
         </div>
       </template>
       <div v-else class="search-bar mobile-search-bar">
-        <span class="search-icon">🔍</span>
+        <el-icon class="search-icon"><Search /></el-icon>
         <input
+          ref="mobileSearchInputRef"
           v-model="searchQuery"
           @input="onSearchInput"
           @keydown.escape="closeSearch"
           placeholder="搜索旅行、地点..."
           class="search-input"
-          autofocus
         />
-        <button class="search-close" @click="closeSearch">✕</button>
+        <button class="search-close" aria-label="关闭搜索" @click="closeSearch"><el-icon><Close /></el-icon></button>
 
         <div v-if="searchQuery.trim()" class="search-dropdown">
           <div v-if="searchLoading" class="search-status">搜索中...</div>
@@ -225,33 +274,35 @@ function cycleTheme() {
             <template v-else>
               <div v-if="searchResults.trips.length > 0" class="search-group">
                 <div class="search-group-title">旅行</div>
-                <div
+                <button
                   v-for="trip in searchResults.trips"
                   :key="'mt'+trip.id"
+                  type="button"
                   class="search-item"
                   @click="goToTrip(trip.id)"
                 >
-                  <span class="search-item-icon">✈</span>
+                  <span class="search-item-icon"><el-icon><Suitcase /></el-icon></span>
                   <div class="search-item-info">
                     <div class="search-item-name">{{ trip.title }}</div>
                     <div class="search-item-desc">{{ trip.start_date }} ~ {{ trip.end_date }}</div>
                   </div>
-                </div>
+                </button>
               </div>
               <div v-if="searchResults.locations.length > 0" class="search-group">
                 <div class="search-group-title">地点</div>
-                <div
+                <button
                   v-for="loc in searchResults.locations"
                   :key="'ml'+loc.id"
+                  type="button"
                   class="search-item"
                   @click="goToTrip(loc.trip_id)"
                 >
-                  <span class="search-item-icon">📍</span>
+                  <span class="search-item-icon"><el-icon><Location /></el-icon></span>
                   <div class="search-item-info">
                     <div class="search-item-name">{{ loc.name }}</div>
                     <div class="search-item-desc">{{ loc.city }} · {{ loc.trip_title }}</div>
                   </div>
-                </div>
+                </button>
               </div>
             </template>
           </div>
@@ -267,13 +318,13 @@ function cycleTheme() {
       </router-view>
     </main>
 
-    <!-- Mobile bottom tab bar -->
+    <!-- 移动端底部标签栏 -->
     <nav v-if="showNav" class="mobile-tab-bar">
       <router-link
         v-for="item in navItems"
         :key="item.path"
         :to="item.path"
-        :class="['tab-item', { active: route.path === item.path }]"
+        :class="['tab-item', { active: isActive(item.path, item.exact) }]"
       >
         <el-icon class="tab-icon"><component :is="item.icon" /></el-icon>
         <span class="tab-label">{{ item.label }}</span>
@@ -283,114 +334,135 @@ function cycleTheme() {
 </template>
 
 <style scoped>
-/* ========== Desktop Nav ========== */
+/* ========== 桌面导航 ========== */
 .desktop-nav {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 32px;
-  height: 60px;
-  background: var(--color-warm-white);
-  border-bottom: 1px solid var(--color-warm-gray-100);
+  gap: var(--space-lg);
+  min-height: 64px;
+  height: 64px;
+  padding-inline: clamp(20px, 4vw, 56px);
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: 0;
   z-index: 100;
-  backdrop-filter: blur(12px);
 }
 
 .nav-left {
   display: flex;
   align-items: center;
-  gap: 32px;
+  gap: var(--space-lg);
+  min-width: 0;
 }
 
 .logo {
+  padding: 0;
+  border: 0;
+  background: transparent;
   font-family: var(--font-serif);
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
-  color: var(--color-warm-gray-900);
-  letter-spacing: 0.05em;
+  color: var(--color-ink);
+  letter-spacing: 0.06em;
   cursor: pointer;
-  transition: color 0.2s ease;
+  white-space: nowrap;
+  transition: color var(--dur-base) var(--ease-out);
 }
 
 .logo:hover {
-  color: var(--color-amber-dark);
+  color: var(--color-primary);
+}
+
+.nav-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--color-border-strong);
 }
 
 .nav-links {
   display: flex;
-  gap: 4px;
+  gap: 6px;
 }
 
 .nav-link {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border-radius: var(--radius-md);
+  gap: 7px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
   font-size: 14px;
   font-weight: 500;
-  color: var(--color-warm-gray-500);
+  color: var(--color-ink-secondary);
   text-decoration: none;
-  transition: all 0.2s ease;
+  transition: color var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out);
+}
+
+.nav-link .el-icon {
+  font-size: 16px;
 }
 
 .nav-link:hover {
-  color: var(--color-warm-gray-900);
-  background: var(--color-cream);
+  color: var(--color-ink);
+  background: var(--color-surface-muted);
 }
 
 .nav-link.active {
-  color: var(--color-amber-dark);
-  background: rgba(212, 168, 83, 0.1);
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
   font-weight: 600;
 }
 
 .nav-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .nav-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 7px 14px;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: 999px;
   background: transparent;
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-warm-gray-500);
+  color: var(--color-ink-secondary);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: color var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out);
 }
 
 .nav-btn .el-icon {
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .nav-btn:hover {
-  color: var(--color-warm-gray-900);
-  background: var(--color-cream);
+  color: var(--color-ink);
+  background: var(--color-surface-muted);
 }
 
 .nav-btn-logout:hover {
-  color: var(--color-terracotta);
-  background: rgba(196, 112, 75, 0.08);
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
 }
 
-/* ========== Mobile Top Bar ========== */
+/* ========== 移动端顶栏 ========== */
 .mobile-top-bar {
   display: none;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
-  background: var(--color-warm-white);
-  border-bottom: 1px solid var(--color-warm-gray-100);
+  min-height: 60px;
+  padding: 8px 12px 8px 16px;
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -398,54 +470,55 @@ function cycleTheme() {
 
 .mobile-logo {
   font-family: var(--font-serif);
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 700;
-  color: var(--color-warm-gray-900);
-  letter-spacing: 0.05em;
+  color: var(--color-ink);
+  letter-spacing: 0.06em;
 }
 
 .mobile-top-actions {
   display: flex;
-  gap: 4px;
+  gap: 2px;
 }
 
 .mobile-action-btn {
-  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: 999px;
   background: transparent;
-  font-family: var(--font-sans);
-  font-size: 13px;
-  color: var(--color-warm-gray-500);
+  color: var(--color-ink-secondary);
   cursor: pointer;
 }
 
 .mobile-action-btn:active {
-  background: var(--color-cream);
+  background: var(--color-surface-muted);
+  color: var(--color-ink);
 }
 
-/* ========== Main Content ========== */
+/* ========== 主内容 ========== */
 main {
   flex: 1;
   overflow: auto;
 }
 
-.no-header {
-  padding: 0;
-}
-
-/* ========== Mobile Bottom Tab Bar ========== */
+/* ========== 移动端底部标签栏 ========== */
 .mobile-tab-bar {
   display: none;
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  height: 56px;
-  background: var(--color-warm-white);
-  border-top: 1px solid var(--color-warm-gray-100);
-  z-index: 100;
+  height: calc(64px + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
+  background: color-mix(in srgb, var(--color-surface) 96%, transparent);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid var(--color-border);
+  z-index: 100;
 }
 
 .tab-item {
@@ -454,11 +527,11 @@ main {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 3px;
   text-decoration: none;
-  color: var(--color-warm-gray-500);
+  color: var(--color-ink-muted);
   font-size: 11px;
-  transition: color 0.2s ease;
+  transition: color var(--dur-base) var(--ease-out);
   position: relative;
 }
 
@@ -468,15 +541,16 @@ main {
   top: 0;
   left: 50%;
   transform: translateX(-50%) scaleX(0);
-  width: 24px;
-  height: 2px;
-  background: var(--color-amber);
-  border-radius: 1px;
-  transition: transform 0.25s ease;
+  width: 28px;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--color-primary);
+  transition: transform var(--dur-base) var(--ease-out);
 }
 
 .tab-item.active {
-  color: var(--color-amber-dark);
+  color: var(--color-primary);
+  font-weight: 600;
 }
 
 .tab-item.active::before {
@@ -484,24 +558,16 @@ main {
 }
 
 .tab-icon {
-  font-size: 20px;
+  font-size: 21px;
   line-height: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .tab-label {
-  font-weight: 500;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
 }
 
-/* ========== Search ========== */
-.search-btn {
-  font-size: 16px;
-  padding: 6px 10px;
-}
-
+/* ========== 搜索 ========== */
 .search-bar {
   display: flex;
   align-items: center;
@@ -514,100 +580,123 @@ main {
 .search-icon {
   position: absolute;
   left: 14px;
-  font-size: 16px;
+  font-size: 17px;
   z-index: 1;
+  color: var(--color-ink-muted);
   pointer-events: none;
 }
 
 .search-bar .search-input {
   width: 100%;
-  padding: 10px 40px 10px 40px;
-  border: 1px solid var(--color-warm-gray-100, #E8E4DF);
-  border-radius: 10px;
+  min-height: 44px;
+  padding: 10px 48px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
   font-size: 14px;
+  font-family: var(--font-sans);
   outline: none;
-  background: var(--color-cream, #FDF8F0);
-  color: var(--color-warm-gray-900, #2C2C2C);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.06);
-  transition: all 0.2s ease;
-  box-sizing: border-box;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  transition: border-color var(--dur-base) ease,
+    background-color var(--dur-base) ease,
+    box-shadow var(--dur-base) ease;
 }
 
 .search-bar .search-input:focus {
-  border-color: var(--color-amber, #D4A853);
-  background: var(--color-warm-white, #FEFCF9);
-  box-shadow: 0 0 0 3px rgba(212, 168, 83, 0.12), inset 0 1px 3px rgba(0, 0, 0, 0.04);
+  border-color: var(--color-primary);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 14%, transparent);
 }
 
 .search-bar .search-input::placeholder {
-  color: var(--color-warm-gray-300, #C0B8AE);
+  color: var(--color-ink-muted);
 }
 
 .search-close {
   position: absolute;
-  right: 8px;
-  background: none;
+  right: 2px;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
+  background: none;
   font-size: 16px;
-  color: var(--color-warm-gray-400, #A89F95);
+  color: var(--color-ink-muted);
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 4px;
-  transition: all 0.15s;
+  border-radius: 999px;
+  transition: color var(--dur-fast) ease, background-color var(--dur-fast) ease;
 }
 
 .search-close:hover {
-  background: rgba(0, 0, 0, 0.06);
-  color: var(--color-warm-gray-700, #5C5650);
+  background: var(--color-surface-muted);
+  color: var(--color-ink-secondary);
 }
 
 .search-dropdown {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 10px);
   left: 0;
   right: 0;
-  max-height: 420px;
+  max-height: 440px;
   overflow-y: auto;
-  background: var(--color-warm-white, #FEFCF9);
-  border: 1px solid var(--color-warm-gray-100, #E8E4DF);
-  border-radius: 12px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-elevated);
   z-index: 200;
 }
 
 .search-status {
-  padding: 32px 20px;
+  padding: 36px 20px;
   text-align: center;
-  color: var(--color-warm-gray-400, #A89F95);
-  font-size: 13px;
+  color: var(--color-ink-muted);
+  font-size: var(--text-sm);
 }
 
 .search-group-title {
-  padding: 10px 16px 6px;
+  padding: 14px 18px 6px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--color-warm-gray-400, #A89F95);
-  letter-spacing: 0.5px;
+  color: var(--color-ink-muted);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .search-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 16px;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 18px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background-color var(--dur-fast) ease;
 }
 
 .search-item:hover {
-  background: rgba(212, 168, 83, 0.08);
+  background: var(--color-primary-soft);
+}
+
+.search-item:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+  background: var(--color-primary-soft);
 }
 
 .search-item-icon {
+  display: inline-flex;
   font-size: 18px;
+  color: var(--color-primary);
   flex-shrink: 0;
   width: 24px;
-  text-align: center;
+  justify-content: center;
 }
 
 .search-item-info {
@@ -618,7 +707,7 @@ main {
 .search-item-name {
   font-size: 14px;
   font-weight: 500;
-  color: var(--color-warm-gray-900, #2C2C2C);
+  color: var(--color-ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -626,11 +715,11 @@ main {
 
 .search-item-desc {
   font-size: 12px;
-  color: var(--color-warm-gray-400, #A89F95);
+  color: var(--color-ink-muted);
   margin-top: 2px;
 }
 
-/* ========== Responsive ========== */
+/* ========== 响应式 ========== */
 @media (max-width: 768px) {
   .desktop-nav {
     display: none;
@@ -645,7 +734,7 @@ main {
   }
 
   main {
-    padding-bottom: 64px;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
   }
 
   .mobile-search-bar {
@@ -654,11 +743,11 @@ main {
 
   .mobile-search-bar .search-dropdown {
     position: fixed;
-    top: 56px;
+    top: 60px;
     left: 0;
     right: 0;
-    border-radius: 0 0 12px 12px;
-    max-height: calc(100vh - 56px - 64px);
+    border-radius: 0;
+    max-height: calc(100dvh - 60px - 64px - env(safe-area-inset-bottom));
   }
 }
 </style>

@@ -26,6 +26,30 @@ describe('shares API', () => {
     await viewShare('abc-123-token')
     expect(request.get).toHaveBeenCalledWith('/shares/view/abc-123-token')
   })
+
+  it('getShares calls GET /shares', async () => {
+    const { getShares } = await import('../../api/shares')
+    await getShares()
+    expect(request.get).toHaveBeenCalledWith('/shares')
+  })
+
+  it('getSharedPhotos scopes the request to the share token and location', async () => {
+    const { getSharedPhotos } = await import('../../api/shares')
+    await getSharedPhotos('abc-123-token', 8)
+    expect(request.get).toHaveBeenCalledWith('/shares/view/abc-123-token/locations/8/photos')
+  })
+
+  it('rotateShare calls POST /shares/:tripId/rotate', async () => {
+    const { rotateShare } = await import('../../api/shares')
+    await rotateShare(5)
+    expect(request.post).toHaveBeenCalledWith('/shares/5/rotate')
+  })
+
+  it('revokeShare calls DELETE /shares/:token', async () => {
+    const { revokeShare } = await import('../../api/shares')
+    await revokeShare('abc-123-token')
+    expect(request.delete).toHaveBeenCalledWith('/shares/abc-123-token')
+  })
 })
 
 describe('timeline API', () => {
@@ -65,10 +89,11 @@ describe('auth API', () => {
 
   it('changePassword calls POST /auth/change-password', async () => {
     const { changePassword } = await import('../../api/auth')
-    await changePassword('oldPass', 'newPass123')
+    await changePassword('oldPass', 'newPass123', 'newPass123')
     expect(request.post).toHaveBeenCalledWith('/auth/change-password', {
       current_password: 'oldPass',
       new_password: 'newPass123',
+      confirm_password: 'newPass123',
     })
   })
 })

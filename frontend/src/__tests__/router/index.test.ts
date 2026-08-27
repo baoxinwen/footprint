@@ -1,5 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+const routerMock = vi.hoisted(() => ({
+  guard: null as null | ((to: any, from: any, next: (target?: string) => void) => void),
+}))
+
+vi.mock('vue-router', () => ({
+  createWebHistory: vi.fn(() => ({})),
+  createRouter: vi.fn(() => ({
+    beforeEach: (guard: typeof routerMock.guard) => { routerMock.guard = guard },
+  })),
+}))
+
 // Mock localStorage
 const localStorageMock = (() => {
   let store: Record<string, string> = {}
@@ -8,6 +19,8 @@ const localStorageMock = (() => {
     setItem: vi.fn((key: string, value: string) => { store[key] = value }),
     removeItem: vi.fn((key: string) => { delete store[key] }),
     clear: vi.fn(() => { store = {} }),
+    key: vi.fn((index: number) => Object.keys(store)[index] ?? null),
+    get length() { return Object.keys(store).length },
   }
 })()
 
@@ -74,5 +87,19 @@ describe('Router Guard', () => {
     expect(() => {
       JSON.parse(atob(malformedToken.split('.')[1]))
     }).toThrow()
+  })
+
+  it('clears private drafts when the route guard rejects an expired session', async () => {
+    await import('../../router')
+    const expiredPayload = { sub: '17', exp: Math.floor(Date.now() / 1000) - 3600 }
+    localStorage.setItem('token', `header.${btoa(JSON.stringify(expiredPayload))}.signature`)
+    localStorage.setItem('footprint:trip-draft:17', 'private-draft')
+    const next = vi.fn()
+
+    routerMock.guard!({ meta: { requiresAuth: true } }, {}, next)
+
+    expect(next).toHaveBeenCalledWith('/login')
+    expect(localStorage.getItem('token')).toBeNull()
+    expect(localStorage.getItem('footprint:trip-draft:17')).toBeNull()
   })
 })

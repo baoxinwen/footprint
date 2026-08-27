@@ -7,13 +7,23 @@ export async function registerAndLogin(page: Page): Promise<string> {
   await page.fill('input[placeholder*="3-50个字符"]', username)
   await page.fill('input[placeholder="至少6位"]', 'Test@123456')
   await page.fill('input[placeholder="再次输入密码"]', 'Test@123456')
+  const registerResponsePromise = page.waitForResponse(
+    (response) => response.url().endsWith('/api/auth/register') && response.request().method() === 'POST',
+  )
   await page.locator('.submit-btn').click()
+  const registerResponse = await registerResponsePromise
+  expect(registerResponse.status(), await registerResponse.text()).toBe(200)
   await expect(page.locator('.el-message')).toContainText('注册成功')
 
   await page.locator('.tab-btn', { hasText: '登录' }).click()
   await page.fill('input[placeholder="请输入用户名"]', username)
   await page.fill('input[placeholder="请输入密码"]', 'Test@123456')
+  const loginResponsePromise = page.waitForResponse(
+    (response) => response.url().endsWith('/api/auth/login') && response.request().method() === 'POST',
+  )
   await page.locator('.submit-btn').click()
+  const loginResponse = await loginResponsePromise
+  expect(loginResponse.status(), await loginResponse.text()).toBe(200)
   await expect(page).toHaveURL('/')
   return username
 }
@@ -24,8 +34,10 @@ export async function createTrip(page: Page, title: string, startDate: string, e
 
   const dateInputs = page.locator('.el-date-editor input')
   await dateInputs.nth(0).fill(startDate)
+  await dateInputs.nth(0).press('Tab')
   await dateInputs.nth(1).fill(endDate)
+  await dateInputs.nth(1).press('Tab')
 
-  await page.locator('button:has-text("创建")').click()
-  await expect(page.locator('.el-message--success')).toContainText('创建成功')
+  await page.getByRole('button', { name: '创建旅行', exact: true }).click()
+  await expect(page).toHaveURL(/\/trips\/\d+$/)
 }

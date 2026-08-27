@@ -75,6 +75,23 @@ describe('TimelineView', () => {
     expect(mockPush).toHaveBeenCalledWith('/trips/42')
   })
 
+  it('renders each trip as an accessible navigation button', async () => {
+    vi.mocked(getTimeline).mockResolvedValue({
+      data: [
+        { year: 2025, month: 10, label: '2025年10月', count: 1, trips: [
+          { id: 42, title: '秋日北京', start_date: '2025-10-01', end_date: '2025-10-03' },
+        ]},
+      ],
+    } as any)
+    const wrapper = mount(TimelineView, {
+      global: { stubs: { 'el-icon': true } },
+    })
+    await flushPromises()
+
+    const trip = wrapper.get('button.trip-item')
+    expect(trip.attributes('aria-label')).toContain('秋日北京')
+  })
+
   it('shows create button in empty state', async () => {
     vi.mocked(getTimeline).mockResolvedValue({ data: [] } as any)
     const wrapper = mount(TimelineView, {

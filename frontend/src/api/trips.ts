@@ -43,6 +43,17 @@ export function updateTrip(id: number, data: {
   description?: string
   start_date?: string
   end_date?: string
+  locations?: Array<{
+    id?: number
+    name: string
+    address: string
+    longitude: number
+    latitude: number
+    city: string
+    province: string
+    note: string | null
+  }>
+  removed_location_ids?: number[]
 }) {
   return request.put(`/trips/${id}`, data)
 }

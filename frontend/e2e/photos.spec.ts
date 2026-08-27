@@ -8,7 +8,7 @@ test.describe('照片管理流程', () => {
 
     // 进入旅行详情
     await page.goto('/trips')
-    await page.locator('text=照片测试旅行').first().click()
+    await page.getByRole('button', { name: '查看旅行：照片测试旅行' }).click()
 
     // 详情页应正常加载
     await expect(page.locator('text=照片测试旅行')).toBeVisible()

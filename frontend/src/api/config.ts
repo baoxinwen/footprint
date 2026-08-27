@@ -2,6 +2,7 @@ import request from './request'
 
 export interface AppConfig {
   amap_key: string
+  amap_security_code: string
 }
 
 export async function getConfig(): Promise<AppConfig> {

@@ -8,6 +8,6 @@ export function login(username: string, password: string) {
   return request.post('/auth/login', { username, password })
 }
 
-export function changePassword(current_password: string, new_password: string) {
-  return request.post('/auth/change-password', { current_password, new_password })
+export function changePassword(current_password: string, new_password: string, confirm_password: string) {
+  return request.post('/auth/change-password', { current_password, new_password, confirm_password })
 }

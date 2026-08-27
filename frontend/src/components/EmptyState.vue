@@ -1,10 +1,16 @@
 <script setup lang="ts">
-defineProps<{
-  icon?: string
+import { computed } from 'vue'
+import { Calendar, DataAnalysis, MapLocation, Suitcase } from '@element-plus/icons-vue'
+
+const props = defineProps<{
+  icon?: 'map' | 'calendar' | 'stats' | 'trips'
   title: string
   description?: string
   actionText?: string
 }>()
+
+const icons = { map: MapLocation, calendar: Calendar, stats: DataAnalysis, trips: Suitcase }
+const iconComponent = computed(() => props.icon ? icons[props.icon] : null)
 
 const emit = defineEmits<{
   action: []
@@ -13,11 +19,13 @@ const emit = defineEmits<{
 
 <template>
   <div class="empty-state">
-    <div v-if="icon" class="empty-icon">{{ icon }}</div>
+    <div v-if="iconComponent" class="empty-icon" aria-hidden="true">
+      <el-icon><component :is="iconComponent" /></el-icon>
+    </div>
     <p class="empty-title">{{ title }}</p>
     <p v-if="description" class="empty-desc">{{ description }}</p>
     <button v-if="actionText" class="empty-action" @click="emit('action')">
-      <span>+</span> {{ actionText }}
+      <span aria-hidden="true">+</span> {{ actionText }}
     </button>
   </div>
 </template>
@@ -30,14 +38,16 @@ const emit = defineEmits<{
   padding: 60px 20px;
   text-align: center;
 }
-.empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.6; }
-.empty-title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
-.empty-desc { font-size: 14px; color: var(--color-warm-gray-500); margin-bottom: 24px; }
+.empty-icon { font-size: 44px; margin-bottom: 16px; color: var(--color-primary); }
+.empty-icon .el-icon { display: block; }
+.empty-title { font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+.empty-desc { font-size: 14px; color: var(--color-ink-muted); margin-bottom: 24px; }
 .empty-action {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 10px 20px; border: none; border-radius: 8px;
-  background: var(--color-amber); color: white; font-size: 14px;
+  min-height: 44px; padding: 10px 24px; border: none; border-radius: 999px;
+  background: var(--color-primary); color: var(--color-on-primary); font-size: 14px;
   font-weight: 600; cursor: pointer;
+  transition: background-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
 }
-.empty-action:hover { background: var(--color-amber-dark); }
+.empty-action:hover { background: var(--color-primary-hover); box-shadow: var(--shadow-primary); }
 </style>

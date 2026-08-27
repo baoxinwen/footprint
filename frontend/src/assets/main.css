@@ -1,60 +1,158 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;600&display=swap');
+/* ============================================================
+   旅行足迹 · 设计令牌  UI 2.0「杂志编辑风」
+   单一语义 token 来源；视图只允许使用 --color-* / --text-* /
+   --space-* / --radius-* / --shadow-* / --dur-* 变量。
+   ============================================================ */
 
 :root {
-  /* Color Tokens */
-  --color-cream: #FDF8F0;
-  --color-cream-dark: #F5EDE0;
-  --color-warm-white: #FEFCF9;
-  --color-amber: #D4A853;
-  --color-amber-light: #E8C97A;
-  --color-amber-dark: #B8922E;
-  --color-terracotta: #C4704B;
-  --color-terracotta-light: #D4896A;
-  --color-sage: #7A9E7E;
-  --color-sage-light: #A3C4A7;
-  --color-charcoal: #2C2C2C;
-  --color-warm-gray-900: #3A3632;
-  --color-warm-gray-700: #5C5650;
-  --color-warm-gray-500: #8A8279;
-  --color-warm-gray-300: #B8B0A6;
-  --color-warm-gray-100: #E8E2DA;
+  /* ---- 色彩 · 浅色（暖纸白） ---- */
+  --color-canvas: #faf8f4;          /* 页面底：暖纸白 */
+  --color-surface: #ffffff;         /* 卡片面 */
+  --color-surface-muted: #f3efe7;   /* 次级面：更深的纸色 */
+  --color-ink: #1c2420;             /* 主文字 */
+  --color-ink-secondary: #55605a;   /* 次级文字 */
+  --color-ink-muted: #8a938c;       /* 弱文字 */
+  --color-border: #e6e1d6;          /* 暖色发丝线 */
+  --color-border-strong: #cfc8b8;
+  --color-primary: #1f5c46;         /* 墨绿 */
+  --color-primary-hover: #174735;
+  --color-primary-soft: #e7efe9;
+  --color-on-primary: #fdfcf9;
+  --color-accent: #b8862d;          /* 赭金：数据高亮专用（排名/峰值/节点） */
+  --color-accent-hover: #9c6f20;
+  --color-accent-soft: #f4ead2;
+  --color-on-accent: #fffdf6;
+  --color-danger: #b3402e;          /* 仅危险场景 */
+  --color-danger-hover: #93321f;
+  --color-danger-soft: #f7e6e1;
+  --color-route: #b8862d;           /* 地图路线强调 = accent */
+  --color-route-soft: #f4ead2;
 
-  /* Shadows */
-  --shadow-soft: 0 2px 8px rgba(60, 50, 40, 0.06);
-  --shadow-card: 0 4px 16px rgba(60, 50, 40, 0.08);
-  --shadow-elevated: 0 8px 32px rgba(60, 50, 40, 0.12);
-  --shadow-warm: 0 4px 20px rgba(212, 168, 83, 0.15);
+  /* ---- 字体 ---- */
+  --font-serif: 'Noto Serif SC', 'Songti SC', 'SimSun', Georgia, serif;
+  --font-sans: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei',
+    -apple-system, BlinkMacSystemFont, sans-serif;
 
-  /* Radius */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  /* ---- 字号阶梯（8 档，行高成对） ---- */
+  --text-xs: 12px;   --lh-xs: 1.5;
+  --text-sm: 13px;   --lh-sm: 1.55;
+  --text-base: 15px; --lh-base: 1.7;
+  --text-md: 17px;   --lh-md: 1.6;
+  --text-lg: 22px;   --lh-lg: 1.4;
+  --text-xl: 28px;   --lh-xl: 1.3;
+  --text-2xl: 40px;  --lh-2xl: 1.2;
+  --text-3xl: 56px;  --lh-3xl: 1.15;
 
-  /* Spacing */
+  /* ---- 圆角 ---- */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+
+  /* ---- 间距 ---- */
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 32px;
   --space-2xl: 48px;
+  --space-3xl: 72px;
 
-  /* Typography */
-  --font-serif: 'Noto Serif SC', 'Georgia', serif;
-  --font-sans: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+  /* ---- 阴影 ---- */
+  --shadow-soft: 0 1px 2px rgba(28, 36, 32, 0.05);
+  --shadow-card: 0 10px 30px rgba(28, 36, 32, 0.08);
+  --shadow-elevated: 0 20px 56px rgba(28, 36, 32, 0.16);
+  --shadow-primary: 0 8px 20px rgba(31, 92, 70, 0.18);
+
+  /* ---- 动效 ---- */
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 240ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* ---- Element Plus 主题桥 ---- */
+  --el-color-primary: var(--color-primary);
+  --el-color-primary-light-3: color-mix(in srgb, var(--color-primary) 70%, var(--color-surface));
+  --el-color-primary-light-5: color-mix(in srgb, var(--color-primary) 50%, var(--color-surface));
+  --el-color-primary-light-7: color-mix(in srgb, var(--color-primary) 30%, var(--color-surface));
+  --el-color-primary-light-8: color-mix(in srgb, var(--color-primary) 20%, var(--color-surface));
+  --el-color-primary-light-9: var(--color-primary-soft);
+  --el-color-primary-dark-2: var(--color-primary-hover);
+  --el-color-danger: var(--color-danger);
+  --el-color-error: var(--color-danger);
+  --el-color-danger-light-3: color-mix(in srgb, var(--color-danger) 70%, var(--color-surface));
+  --el-color-danger-light-5: color-mix(in srgb, var(--color-danger) 50%, var(--color-surface));
+  --el-color-danger-light-7: color-mix(in srgb, var(--color-danger) 30%, var(--color-surface));
+  --el-color-danger-light-8: color-mix(in srgb, var(--color-danger) 20%, var(--color-surface));
+  --el-color-danger-light-9: var(--color-danger-soft);
+  --el-color-danger-dark-2: var(--color-danger-hover);
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
+  --el-border-radius-round: 999px;
+  --el-border-color: var(--color-border);
+  --el-border-color-light: var(--color-border);
+  --el-border-color-lighter: var(--color-border);
+  --el-text-color-primary: var(--color-ink);
+  --el-text-color-regular: var(--color-ink-secondary);
+  --el-text-color-secondary: var(--color-ink-muted);
+  --el-fill-color-blank: var(--color-surface);
+  --el-bg-color: var(--color-surface);
+  --el-bg-color-overlay: var(--color-surface);
+  --el-font-family: var(--font-sans);
+  --el-box-shadow-light: var(--shadow-card);
 }
 
+/* ============================================================
+   深色模式 · 墨绿深夜影集
+   ============================================================ */
+html.dark {
+  color-scheme: dark;
+  --color-canvas: #0c120f;
+  --color-surface: #131b17;
+  --color-surface-muted: #1a2520;
+  --color-ink: #ecf2ee;
+  --color-ink-secondary: #b5c2ba;
+  --color-ink-muted: #7f8d85;
+  --color-border: #263530;
+  --color-border-strong: #3a4c44;
+  --color-primary: #7cc4a1;
+  --color-primary-hover: #9ad4b8;
+  --color-primary-soft: #1d3a2d;
+  --color-on-primary: #0c1512;
+  --color-accent: #d4a94e;
+  --color-accent-hover: #e2bd6c;
+  --color-accent-soft: #332a18;
+  --color-on-accent: #14100a;
+  --color-danger: #e08272;
+  --color-danger-hover: #eb9c8e;
+  --color-danger-soft: #3c241d;
+  --color-route: #d4a94e;
+  --color-route-soft: #332a18;
+  --el-fill-color-blank: var(--color-surface);
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --shadow-elevated: 0 20px 56px rgba(0, 0, 0, 0.5);
+  --shadow-primary: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* ============================================================
+   基础
+   ============================================================ */
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-html, body, #app {
+html,
+body,
+#app {
   height: 100%;
   font-family: var(--font-sans);
-  background-color: var(--color-cream);
-  color: var(--color-warm-gray-900);
+  font-size: var(--text-base);
+  line-height: var(--lh-base);
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -65,143 +163,68 @@ html, body, #app {
   flex-direction: column;
 }
 
-.el-main {
-  flex: 1;
-  overflow: auto;
+::selection {
+  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
 }
 
-/* ========== Dark Mode ========== */
-html.dark {
-  color-scheme: dark;
-  --color-cream: #1A1816;
-  --color-cream-dark: #222019;
-  --color-warm-white: #1E1C19;
-  --color-warm-gray-900: #E8E2DA;
-  --color-warm-gray-700: #B8B0A6;
-  --color-warm-gray-500: #8A8279;
-  --color-warm-gray-300: #5C5650;
-  --color-warm-gray-100: #3A3632;
-  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.2);
-  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.25);
-  --shadow-elevated: 0 8px 32px rgba(0, 0, 0, 0.35);
-}
-
-html.dark body {
-  background-color: var(--color-cream);
-  color: var(--color-warm-gray-900);
-}
-
-html.dark .el-card {
-  background-color: var(--color-cream-dark);
-  border-color: var(--color-warm-gray-100);
-}
-
-html.dark .el-header,
-html.dark .mobile-top-bar {
-  background-color: var(--color-cream-dark);
-  border-color: var(--color-warm-gray-100);
-}
-
-html.dark .el-menu {
-  background-color: var(--color-cream-dark);
-}
-
-html.dark .el-input__wrapper {
-  background-color: var(--color-cream);
-  box-shadow: 0 0 0 1px var(--color-warm-gray-300) inset;
-}
-
-html.dark .el-dialog {
-  background-color: var(--color-cream-dark);
-}
-
-/* ========== Typography ========== */
-h1, h2, h3 {
+h1, h2, h3, h4 {
   font-family: var(--font-serif);
   font-weight: 600;
-  color: var(--color-warm-gray-900);
-  letter-spacing: 0.02em;
+  color: var(--color-ink);
+  letter-spacing: 0.01em;
 }
 
-/* ========== Element Plus Overrides ========== */
+button, a, input, select, textarea {
+  touch-action: manipulation;
+  font-family: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 55%, transparent);
+  outline-offset: 2px;
+}
+
+/* ============================================================
+   Element Plus 全局微调
+   ============================================================ */
 .el-card {
-  border: 1px solid var(--color-warm-gray-100);
-  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-soft);
-  transition: box-shadow 0.3s ease, transform 0.3s ease;
-}
-
-.el-card:hover {
-  box-shadow: var(--shadow-card);
 }
 
 .el-card__header {
   font-family: var(--font-serif);
   font-weight: 600;
-  font-size: 16px;
-  color: var(--color-warm-gray-900);
-  border-bottom: 1px solid var(--color-warm-gray-100);
-  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.el-button {
+  min-height: 40px;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .el-button--primary {
-  background-color: var(--color-amber);
-  border-color: var(--color-amber);
   font-weight: 500;
-  border-radius: var(--radius-md);
-  transition: all 0.2s ease;
 }
 
-.el-button--primary:hover {
-  background-color: var(--color-amber-dark);
-  border-color: var(--color-amber-dark);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-warm);
+.el-button--primary:not(.is-disabled):hover {
+  box-shadow: var(--shadow-primary);
 }
 
-.el-button--danger {
-  border-radius: var(--radius-md);
-}
-
-.el-menu--horizontal {
-  border-bottom: none !important;
-}
-
-.el-menu-item {
-  font-weight: 500;
-  font-size: 14px;
-  color: var(--color-warm-gray-700);
-  transition: color 0.2s ease;
-}
-
-.el-menu-item.is-active {
-  color: var(--color-amber-dark) !important;
-  font-weight: 600;
-}
-
-.el-tag {
+.el-input__wrapper,
+.el-select__wrapper,
+.el-date-editor.el-input__wrapper {
+  min-height: 40px;
   border-radius: var(--radius-sm);
-  font-size: 12px;
-}
-
-.el-tag--info {
-  background-color: var(--color-cream-dark);
-  border-color: var(--color-warm-gray-100);
-  color: var(--color-warm-gray-700);
-}
-
-.el-form-item__label {
-  font-weight: 500;
-  color: var(--color-warm-gray-700);
-}
-
-.el-input__wrapper {
-  border-radius: var(--radius-md);
-  transition: box-shadow 0.2s ease;
 }
 
 .el-dialog {
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
@@ -210,84 +233,122 @@ h1, h2, h3 {
 }
 
 .el-upload-dragger {
-  border-radius: var(--radius-lg);
-  border-color: var(--color-warm-gray-300);
-  transition: border-color 0.2s ease;
+  border-radius: var(--radius-md);
 }
 
-.el-upload-dragger:hover {
-  border-color: var(--color-amber);
+.el-popper {
+  border-radius: var(--radius-sm);
 }
 
-/* ========== Page Transitions ========== */
+/* ============================================================
+   路由过渡：180ms 纯淡入淡出（快而不跳）
+   ============================================================ */
 .fade-slide-enter-active {
-  transition: all 0.3s ease-out;
+  transition: opacity var(--dur-base) var(--ease-out);
 }
 
 .fade-slide-leave-active {
-  transition: all 0.2s ease-in;
+  transition: opacity var(--dur-fast) ease-in;
 }
 
-.fade-slide-enter-from {
-  opacity: 0;
-  transform: translateY(12px);
-}
-
+.fade-slide-enter-from,
 .fade-slide-leave-to {
   opacity: 0;
-  transform: translateY(-8px);
 }
 
-/* ========== Markdown Content ========== */
+/* ============================================================
+   列表逐项入场
+   ============================================================ */
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stagger-item {
+  animation: riseIn var(--dur-slow) var(--ease-out) both;
+}
+
+.stagger-item:nth-child(1) { animation-delay: 0ms; }
+.stagger-item:nth-child(2) { animation-delay: 40ms; }
+.stagger-item:nth-child(3) { animation-delay: 80ms; }
+.stagger-item:nth-child(4) { animation-delay: 120ms; }
+.stagger-item:nth-child(5) { animation-delay: 160ms; }
+.stagger-item:nth-child(6) { animation-delay: 200ms; }
+.stagger-item:nth-child(7) { animation-delay: 240ms; }
+.stagger-item:nth-child(8) { animation-delay: 280ms; }
+.stagger-item:nth-child(n + 9) { animation-delay: 320ms; }
+
+/* 骨架屏微光 */
+@keyframes skeletonPulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+.skeleton {
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-sm);
+  animation: skeletonPulse 1.4s ease-in-out infinite;
+}
+
+/* ============================================================
+   Markdown 正文
+   ============================================================ */
 .markdown-body {
-  line-height: 1.8;
-  color: var(--color-warm-gray-900);
-  font-size: 15px;
+  line-height: 1.85;
+  color: var(--color-ink);
+  font-size: var(--text-base);
+  word-break: break-word;
 }
 
-.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3 {
   font-family: var(--font-serif);
-  margin-top: 1.2em;
-  margin-bottom: 0.6em;
-  color: var(--color-warm-gray-900);
+  margin-top: 1.3em;
+  margin-bottom: 0.55em;
 }
 
 .markdown-body h1 { font-size: 1.5em; }
-.markdown-body h2 { font-size: 1.3em; }
-.markdown-body h3 { font-size: 1.1em; }
+.markdown-body h2 { font-size: 1.28em; }
+.markdown-body h3 { font-size: 1.12em; }
 
 .markdown-body p {
-  margin-bottom: 0.6em;
+  margin-bottom: 0.65em;
 }
 
 .markdown-body img {
   max-width: 100%;
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-soft);
+  border-radius: var(--radius-sm);
   margin: 0.8em 0;
 }
 
 .markdown-body blockquote {
-  border-left: 3px solid var(--color-amber);
+  border-left: 3px solid var(--color-accent);
   padding-left: 16px;
-  color: var(--color-warm-gray-500);
+  color: var(--color-ink-secondary);
   margin: 1em 0;
-  font-style: italic;
 }
 
 .markdown-body code {
-  background: var(--color-cream-dark);
+  background: var(--color-surface-muted);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   font-size: 0.88em;
-  color: var(--color-terracotta);
+  color: var(--color-accent-hover);
 }
 
 .markdown-body pre {
-  background: var(--color-warm-gray-900);
-  color: var(--color-cream);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  color: var(--color-ink);
   padding: 16px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   overflow-x: auto;
 }
 
@@ -297,9 +358,10 @@ h1, h2, h3 {
   padding: 0;
 }
 
-.markdown-body ul, .markdown-body ol {
+.markdown-body ul,
+.markdown-body ol {
   padding-left: 1.5em;
-  margin-bottom: 0.6em;
+  margin-bottom: 0.65em;
 }
 
 .markdown-body li {
@@ -307,72 +369,32 @@ h1, h2, h3 {
 }
 
 .markdown-body a {
-  color: var(--color-amber-dark);
+  color: var(--color-primary);
   text-decoration: none;
-  border-bottom: 1px solid transparent;
-  transition: border-color 0.2s ease;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
+  transition: border-color var(--dur-base) ease;
 }
 
 .markdown-body a:hover {
-  border-bottom-color: var(--color-amber-dark);
+  border-bottom-color: var(--color-primary);
 }
 
 .markdown-body strong {
   font-weight: 600;
-  color: var(--color-warm-gray-900);
 }
 
-/* ========== Empty State ========== */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
-  color: var(--color-warm-gray-500);
-  text-align: center;
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 1.5em 0;
 }
 
-.empty-state p {
-  margin-bottom: 16px;
-  font-size: 15px;
-  line-height: 1.6;
-}
-
-.empty-state .el-button {
-  margin-top: 8px;
-}
-
-/* ========== Stagger Animation ========== */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.stagger-item {
-  animation: fadeInUp 0.4s ease-out both;
-}
-
-.stagger-item:nth-child(1) { animation-delay: 0ms; }
-.stagger-item:nth-child(2) { animation-delay: 60ms; }
-.stagger-item:nth-child(3) { animation-delay: 120ms; }
-.stagger-item:nth-child(4) { animation-delay: 180ms; }
-.stagger-item:nth-child(5) { animation-delay: 240ms; }
-.stagger-item:nth-child(6) { animation-delay: 300ms; }
-.stagger-item:nth-child(7) { animation-delay: 360ms; }
-.stagger-item:nth-child(8) { animation-delay: 420ms; }
-.stagger-item:nth-child(9) { animation-delay: 480ms; }
-.stagger-item:nth-child(10) { animation-delay: 540ms; }
-
-/* ========== Scrollbar ========== */
+/* ============================================================
+   滚动条
+   ============================================================ */
 ::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -380,10 +402,24 @@ h1, h2, h3 {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-warm-gray-300);
+  background: var(--color-border-strong);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-warm-gray-500);
+  background: var(--color-ink-muted);
+}
+
+/* ============================================================
+   动效降级
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

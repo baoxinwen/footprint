@@ -40,10 +40,17 @@ describe('ShareExpiredView', () => {
     expect(wrapper.text()).toContain('返回首页')
   })
 
-  it('has expired icon', () => {
+  it('uses a decorative vector icon instead of emoji', () => {
     const wrapper = mount(ShareExpiredView, {
-      global: { stubs: { ElButton: true } },
+      global: {
+        stubs: {
+          ElButton: true,
+          ElIcon: { template: '<i class="el-icon"><slot /></i>' },
+          Link: true,
+        },
+      },
     })
-    expect(wrapper.text()).toContain('🔗')
+    expect(wrapper.find('.expired-icon .el-icon').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('🔗')
   })
 })

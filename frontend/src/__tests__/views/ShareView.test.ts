@@ -14,14 +14,11 @@ vi.mock('vue-router', () => ({
 // Mock API
 vi.mock('../../api/shares', () => ({
   viewShare: vi.fn(),
-}))
-
-vi.mock('../../api/photos', () => ({
-  getPhotos: vi.fn(),
+  getSharedPhotos: vi.fn(),
 }))
 
 import ShareView from '../../views/ShareView.vue'
-import { viewShare } from '../../api/shares'
+import { getSharedPhotos, viewShare } from '../../api/shares'
 
 const mockTripData = {
   id: 1,
@@ -71,6 +68,82 @@ describe('ShareView', () => {
 
     await vi.waitFor(() => {
       expect(viewShare).toHaveBeenCalledWith('test-token-123')
+    })
+  })
+
+  it('loads location photos through the token-scoped public endpoint', async () => {
+    vi.mocked(viewShare).mockResolvedValue({ data: mockTripData } as any)
+    vi.mocked(getSharedPhotos).mockResolvedValue({
+      data: [{
+        id: 7,
+        location_id: 1,
+        original_url: '/api/shares/view/test-token-123/photos/7/original',
+        thumbnail_url: '/api/shares/view/test-token-123/photos/7/thumbnail',
+        file_name: '故宫.jpg',
+        file_size: 1024,
+        created_at: '2025-10-01T10:00:00',
+      }],
+    } as any)
+
+    const wrapper = mount(ShareView, {
+      global: {
+        stubs: {
+          ElIcon: true,
+          PhotoViewer: true,
+        },
+      },
+    })
+
+    await vi.waitFor(() => expect(wrapper.find('.location-header').exists()).toBe(true))
+    await wrapper.find('.location-header').trigger('click')
+
+    await vi.waitFor(() => {
+      expect(getSharedPhotos).toHaveBeenCalledWith('test-token-123', 1)
+      expect(wrapper.find('.photo-item img').attributes('src')).toContain('/api/shares/view/test-token-123/')
+    })
+  })
+
+  it('exposes shared photo thumbnails as descriptively named buttons', async () => {
+    vi.mocked(viewShare).mockResolvedValue({ data: mockTripData } as any)
+    vi.mocked(getSharedPhotos).mockResolvedValue({
+      data: [{
+        id: 7,
+        location_id: 1,
+        original_url: '/api/shares/view/test-token-123/photos/7/original',
+        thumbnail_url: '/api/shares/view/test-token-123/photos/7/thumbnail',
+        file_name: '故宫午后.jpg',
+        file_size: 1024,
+        created_at: '2025-10-01T10:00:00',
+      }],
+    } as any)
+    const wrapper = mount(ShareView, {
+      global: { stubs: { ElIcon: true, PhotoViewer: true } },
+    })
+
+    await vi.waitFor(() => expect(wrapper.find('.location-header').exists()).toBe(true))
+    await wrapper.find('.location-header').trigger('click')
+    await vi.waitFor(() => expect(wrapper.find('.photo-item').exists()).toBe(true))
+
+    const thumbnail = wrapper.get('.photo-item')
+    expect(thumbnail.element.tagName).toBe('BUTTON')
+    expect(thumbnail.attributes('type')).toBe('button')
+    expect(thumbnail.attributes('aria-label')).toBe('查看照片：故宫午后.jpg')
+  })
+
+  it('shows a retry action when shared photos cannot be loaded', async () => {
+    vi.mocked(viewShare).mockResolvedValue({ data: mockTripData } as any)
+    vi.mocked(getSharedPhotos).mockRejectedValue(new Error('network error'))
+
+    const wrapper = mount(ShareView, {
+      global: { stubs: { ElIcon: true, PhotoViewer: true } },
+    })
+
+    await vi.waitFor(() => expect(wrapper.find('.location-header').exists()).toBe(true))
+    await wrapper.find('.location-header').trigger('click')
+
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('照片加载失败')
+      expect(wrapper.find('[data-testid="retry-photos-1"]').exists()).toBe(true)
     })
   })
 

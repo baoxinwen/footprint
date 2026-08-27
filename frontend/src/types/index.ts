@@ -13,6 +13,8 @@ export interface Trip {
   updated_at: string
   location_count: number
   cities: string[]
+  cover_photo_id?: number | null
+  cover_photo_url?: string | null
 }
 
 export interface TripDetail {
@@ -23,6 +25,8 @@ export interface TripDetail {
   end_date: string
   created_at: string
   updated_at: string
+  cover_photo_id?: number | null
+  cover_photo_url?: string | null
   locations: Location[]
 }
 
@@ -93,12 +97,22 @@ export interface MapStats {
   province_count: number
 }
 
+export interface TimelineTrip {
+  id: number
+  title: string
+  description: string | null
+  start_date: string
+  end_date: string
+  cover_photo_url?: string | null
+  cities?: string[]
+}
+
 export interface TimelineGroup {
   year: number
   month: number
   label: string
   count: number
-  trips: { id: number; title: string; description: string | null; start_date: string; end_date: string }[]
+  trips: TimelineTrip[]
 }
 
 export interface TripListResponse {
@@ -108,10 +122,20 @@ export interface TripListResponse {
   items: Trip[]
 }
 
+export interface ShareViewTrip extends TripDetail {
+  expires_at?: string | null
+}
+
 export interface ShareResponse {
   token: string
   url: string
   expires_at: string
+}
+
+export interface ShareListItem extends ShareResponse {
+  trip_id: number
+  trip_title: string
+  created_at: string
 }
 
 export interface AmapPoi {
