@@ -36,14 +36,22 @@ curl --fail --silent --show-error http://127.0.0.1:8002/api/health
 curl --fail --silent --show-error http://127.0.0.1:8001/api/health
 curl --fail --silent --show-error http://127.0.0.1:8001/ > /dev/null
 
-docker compose --project-name "$project_name" exec --no-TTY backend sh -eu -c '
-  test "$(id -u)" != "0"
+# 主进程（PID 1）必须已降权到 PUID；exec 进入容器默认是 root，故读 /proc/1 校验
+backend_main_uid="$(docker compose --project-name "$project_name" exec --no-TTY backend sh -c "awk '/^Uid:/{print \$2}' /proc/1/status" | tr -d '[:space:]')"
+test "$backend_main_uid" = "$PUID"
+
+# 数据目录对应用身份可写
+docker compose --project-name "$project_name" exec --no-TTY --user "$PUID:$PGID" backend sh -eu -c '
   test -f /app/footprint-data/.footprint-data
   for directory in /app/footprint-data/db /app/footprint-data/uploads /app/footprint-data/tmp; do
     probe="$directory/.compose-write-probe"
     : > "$probe"
     rm -f -- "$probe"
   done
+'
+
+# 运行环境变量契约
+docker compose --project-name "$project_name" exec --no-TTY backend sh -eu -c '
   test "$DATABASE_URL" = "sqlite:////app/footprint-data/db/footprint.db"
   test "$UPLOAD_DIR" = "/app/footprint-data/uploads"
   test "$EXPORT_TMP_DIR" = "/app/footprint-data/tmp"

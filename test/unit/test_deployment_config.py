@@ -1,5 +1,4 @@
 import importlib
-import json
 from pathlib import Path
 
 import pytest
@@ -40,22 +39,21 @@ def test_compose_requires_jwt_secret_and_example_does_not_supply_placeholder():
 
 
 @pytest.mark.unit
-def test_compose_mounts_data_root_once_instead_of_derived_host_paths():
+def test_compose_mounts_data_root_once_without_init_container():
     compose = yaml.safe_load(
         (REPOSITORY_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
     )
 
-    assert compose["services"]["data-init"]["volumes"] == [
-        "${FOOTPRINT_DATA_DIR:-./data}:/footprint-data"
-    ]
+    # B 方案：无独立初始化容器，backend 入口自初始化后降权
+    assert "data-init" not in compose["services"]
+    assert "data-init" not in compose["services"]["backend"].get("depends_on", {})
     assert compose["services"]["backend"]["volumes"] == [
         "${FOOTPRINT_DATA_DIR:-./data}:/app/footprint-data"
     ]
-    assert compose["services"]["data-init"]["command"] == [
-        "python",
-        "-m",
-        "app.utils.data_dir",
-    ]
+    backend_environment = compose["services"]["backend"]["environment"]
+    assert "FOOTPRINT_DATA_ROOT=/app/footprint-data" in backend_environment
+    assert "PUID=${PUID:-1000}" in backend_environment
+    assert "PGID=${PGID:-1000}" in backend_environment
 
 
 @pytest.mark.unit
@@ -239,21 +237,24 @@ def test_backend_runtime_is_private_non_root_and_trusts_the_frontend_proxy():
     compose = yaml.safe_load(
         (REPOSITORY_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
     )
-
-    command_line = next(
-        line.removeprefix("CMD ")
-        for line in dockerfile.splitlines()
-        if line.startswith("CMD ")
+    entrypoint = (REPOSITORY_ROOT / "backend" / "docker-entrypoint.sh").read_text(
+        encoding="utf-8"
     )
-    command = json.loads(command_line)
-    assert command[:3] == ["/bin/sh", "-eu", "-c"]
-    command_script = command[3]
-    assert "umask 077" in command_script
-    assert '"$(id -u)" -eq 0' in command_script
-    assert '"$(id -g)" -eq 0' in command_script
-    assert "--proxy-headers" in command_script
-    assert '--forwarded-allow-ips="${BACKEND_TRUSTED_PROXIES:-*}"' in command_script
-    assert "--no-access-log" in command_script
+
+    # 应用代码永不以 root 运行：入口以 root 仅执行数据初始化，随即降权 exec
+    assert 'ENTRYPOINT ["/bin/sh", "/app/docker-entrypoint.sh"]' in dockerfile
+    assert "USER footprint" not in dockerfile
+    assert "python -m app.utils.data_dir" in entrypoint
+    assert "exec setpriv --reuid=\"$PUID\" --regid=\"$PGID\"" in entrypoint
+    assert "umask 077" in entrypoint
+    assert "--proxy-headers" in entrypoint
+    assert '--forwarded-allow-ips="${BACKEND_TRUSTED_PROXIES:-*}"' in entrypoint
+    assert "--no-access-log" in entrypoint
+
+    # root 仅为目录初始化保留最小能力；降权所需的 SETGID/SETUID 显式列出
+    backend_caps = compose["services"]["backend"]["cap_add"]
+    assert {"CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"} <= set(backend_caps)
+    assert compose["services"]["backend"].get("user") is None
     assert compose["services"]["backend"]["ports"] == ["127.0.0.1:8002:8000"]
 
 
