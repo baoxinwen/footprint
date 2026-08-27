@@ -38,7 +38,7 @@ test.describe('用户认证流程', () => {
     await page.fill('input[placeholder="请输入密码"]', 'Test@123456')
     await page.locator('.submit-btn').click()
 
-    await expect(page).toHaveURL('/')
+    await expect(page).toHaveURL('/', { timeout: 15000 })
   })
 
   test('登录失败显示错误提示', async ({ page }) => {

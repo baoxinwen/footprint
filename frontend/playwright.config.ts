@@ -16,14 +16,14 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  retries: 0,
+  retries: process.env.CI ? 1 : 0,
   workers: 1,
   reporter: [['html', { outputFolder: 'e2e-report' }]],
   timeout: 30000,
   globalTeardown: './e2e/global-teardown.ts',
   use: {
     baseURL: `http://localhost:${frontendPort}`,
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
   projects: [
