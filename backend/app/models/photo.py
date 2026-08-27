@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
 from sqlalchemy import Integer, String, BigInteger, DateTime, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.core.database import Base
+from app.utils.storage import validate_stored_path
 
 
 class Photo(Base):
@@ -19,3 +20,7 @@ class Photo(Base):
     )
 
     location: Mapped["Location"] = relationship("Location", back_populates="photos")  # noqa: F821
+
+    @validates("original_path", "thumbnail_path")
+    def validate_file_path(self, _key: str, value: str) -> str:
+        return validate_stored_path(value)

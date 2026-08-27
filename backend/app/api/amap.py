@@ -52,17 +52,34 @@ async def search_poi(
     client = await get_http_client()
     try:
         resp = await client.get(url, params=params)
-        data = resp.json()
+        if resp.status_code != 200:
+            logger.error(f"高德 API 返回异常状态码: {resp.status_code}")
+            raise HTTPException(status_code=502, detail="地图服务请求失败")
+        try:
+            data = resp.json()
+        except ValueError:
+            logger.error("高德 API 返回无效 JSON")
+            raise HTTPException(status_code=502, detail="地图服务返回无效数据")
     except Exception as e:
         logger.error(f"高德 API 请求失败: {e}")
         raise HTTPException(status_code=502, detail="地图服务请求失败")
 
-    if data.get("status") != "1" or not data.get("pois"):
+    if data.get("status") != "1":
+        info = data.get("info") or "地图服务暂时不可用"
+        infocode = data.get("infocode", "")
+        logger.warning(f"高德 POI 搜索失败: keywords={keywords}, city={city}, infocode={infocode}, info={info}")
+        detail = f"地图服务请求失败：{info}"
+        if infocode:
+            detail += f"（错误码 {infocode}）"
+        raise HTTPException(status_code=502, detail=detail)
+
+    pois = data.get("pois") or []
+    if not pois:
         logger.info(f"POI 搜索无结果: keywords={keywords}, city={city}")
         return []
 
     results = []
-    for poi in data.get("pois", []):
+    for poi in pois:
         location = poi.get("location", "")
         parts = location.split(",") if location else []
         lng = float(parts[0]) if len(parts) >= 1 else 0.0

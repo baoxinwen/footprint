@@ -5,14 +5,20 @@ import logging
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from starlette.background import BackgroundTask
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_user_id
 from app.models.user import User
 from app.models.trip import Trip
-from app.utils.zip_utils import add_photos_to_zip, build_export_headers
+from app.utils.zip_utils import (
+    add_photos_to_zip,
+    build_export_headers,
+    new_temp_zip_path,
+    remove_temp_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,18 +88,22 @@ def export_all_with_photos(
     trips_data = []
     total_skipped = 0
 
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for trip in trips:
-            locations = sorted(trip.locations, key=lambda l: l.sort_order)
-            trips_data.append(_trip_to_export_dict(trip))
-            total_skipped += add_photos_to_zip(zf, locations, trip.title)
+    temp_path = new_temp_zip_path()
+    try:
+        with zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for trip in trips:
+                locations = sorted(trip.locations, key=lambda l: l.sort_order)
+                trips_data.append(_trip_to_export_dict(trip))
+                total_skipped += add_photos_to_zip(zf, locations, trip.title)
 
-        zf.writestr("data.json", json.dumps(trips_data, ensure_ascii=False, indent=2))
+            zf.writestr("data.json", json.dumps(trips_data, ensure_ascii=False, indent=2))
+    except Exception:
+        remove_temp_file(temp_path)
+        raise
 
-    zip_buffer.seek(0)
-    return StreamingResponse(
-        zip_buffer,
+    return FileResponse(
+        temp_path,
         media_type="application/zip",
         headers=build_export_headers("足迹数据备份.zip", total_skipped),
+        background=BackgroundTask(remove_temp_file, temp_path),
     )

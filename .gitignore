@@ -45,6 +45,7 @@ htmlcov/
 frontend/test-results/
 frontend/e2e-report/
 frontend/playwright-report/
+backend/.e2e-data/
 
 # OS
 .DS_Store
@@ -70,3 +71,6 @@ docker.log
 
 # Test data
 test-data.json
+
+# ZCode CLI 工作目录
+.zcode/

@@ -2,11 +2,12 @@ import json
 import zipfile
 import io
 import logging
-from datetime import datetime
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import ValidationError
+from starlette.background import BackgroundTask
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -14,7 +15,16 @@ from app.core.security import get_current_user_id
 from app.models.trip import Trip
 from app.models.location import Location
 from app.core.config import settings
-from app.utils.zip_utils import add_photos_to_zip, build_export_headers, _sanitize
+from app.schemas.export_import import ImportTrip
+from app.utils.upload import UploadSizeExceeded, read_upload_limited
+from app.utils.zip_utils import (
+    add_photos_to_zip,
+    build_export_headers,
+    new_temp_zip_path,
+    photo_archive_path,
+    remove_temp_file,
+    _sanitize,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +96,8 @@ def _build_markdown(trip: Trip, locations: list) -> str:
             md_lines.append("**照片：**")
             md_lines.append("")
             for photo in loc.photos:
-                md_lines.append(f"![{photo.file_name}](photos/{_sanitize(loc.name)}/{_sanitize(photo.file_name)})")
+                archive_path = photo_archive_path(trip.title, loc, photo)
+                md_lines.append(f"![{photo.file_name}]({archive_path})")
                 md_lines.append("")
 
         if loc.note:
@@ -114,51 +125,45 @@ def export_markdown(
     locations = sorted(trip.locations, key=lambda l: l.sort_order)
     md_content = _build_markdown(trip, locations)
 
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr(f"{_sanitize(trip.title)}.md", md_content)
-        skipped = add_photos_to_zip(zf, locations, trip.title)
+    temp_path = new_temp_zip_path()
+    try:
+        with zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(f"{_sanitize(trip.title)}.md", md_content)
+            skipped = add_photos_to_zip(zf, locations, trip.title)
+    except Exception:
+        remove_temp_file(temp_path)
+        raise
 
-    zip_buffer.seek(0)
-    return StreamingResponse(
-        zip_buffer,
+    return FileResponse(
+        temp_path,
         media_type="application/zip",
         headers=build_export_headers(f"{trip.title}.zip", skipped),
+        background=BackgroundTask(remove_temp_file, temp_path),
     )
 
 
-def _import_trip_data(trip_data: dict, idx: int, db: Session, user_id: int) -> None:
-    """验证并导入单条旅行数据。"""
+def _import_trip_data(trip_data: ImportTrip, db: Session, user_id: int) -> None:
+    """Import one already-validated trip."""
     trip = Trip(
         user_id=user_id,
-        title=trip_data.get("title", "未命名旅行"),
-        description=trip_data.get("description"),
-        start_date=datetime.fromisoformat(trip_data["startDate"]).date(),
-        end_date=datetime.fromisoformat(trip_data["endDate"]).date(),
+        title=trip_data.title,
+        description=trip_data.description,
+        start_date=trip_data.start_date,
+        end_date=trip_data.end_date,
     )
     db.add(trip)
     db.flush()
 
-    for i, loc_data in enumerate(trip_data.get("locations", [])):
-        name = (loc_data.get("name") or "").strip()
-        address = (loc_data.get("address") or "").strip()
-        longitude = loc_data.get("longitude", 0)
-        latitude = loc_data.get("latitude", 0)
-
-        if not name:
-            raise ValueError(f"地点 {i + 1} 名称不能为空")
-        if not (-180 <= longitude <= 180) or not (-90 <= latitude <= 90):
-            raise ValueError(f"地点 {i + 1} 经纬度范围无效")
-
+    for i, loc_data in enumerate(trip_data.locations):
         location = Location(
             trip_id=trip.id,
-            name=name,
-            address=address,
-            longitude=longitude,
-            latitude=latitude,
-            city=(loc_data.get("city") or "").strip(),
-            province=(loc_data.get("province") or "").strip(),
-            note=loc_data.get("note"),
+            name=loc_data.name.strip(),
+            address=loc_data.address.strip(),
+            longitude=loc_data.longitude,
+            latitude=loc_data.latitude,
+            city=loc_data.city.strip(),
+            province=loc_data.province.strip(),
+            note=loc_data.note,
             sort_order=i,
         )
         db.add(location)
@@ -174,36 +179,39 @@ async def import_trips(
         logger.warning(f"导入失败: 非 JSON 文件 (filename: {file.filename})")
         raise HTTPException(status_code=400, detail="请上传 JSON 文件")
 
-    content = await file.read()
-    if len(content) > settings.MAX_IMPORT_SIZE:
+    try:
+        content = await read_upload_limited(file, settings.MAX_IMPORT_SIZE)
+    except UploadSizeExceeded:
         limit_mb = settings.MAX_IMPORT_SIZE // (1024 * 1024)
-        logger.warning(f"导入失败: 文件过大 ({len(content)} bytes)")
+        logger.warning(f"导入失败: 文件超过限制 ({settings.MAX_IMPORT_SIZE} bytes)")
         raise HTTPException(status_code=400, detail=f"文件大小超过 {limit_mb}MB 限制")
 
     try:
         data = json.loads(content)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, UnicodeDecodeError):
         logger.warning(f"导入失败: JSON 格式错误 (filename: {file.filename})")
         raise HTTPException(status_code=400, detail="JSON 格式错误")
+    except RecursionError:
+        # 深度嵌套的恶意/损坏 JSON 会让 C 解析器递归超限；
+        # 体积已被限制在 1MB 内，无内存风险，但需返回友好错误而非 500
+        logger.warning(f"导入失败: JSON 嵌套过深 (filename: {file.filename})")
+        raise HTTPException(status_code=400, detail="JSON 格式错误")
 
-    trips_data = data if isinstance(data, list) else [data]
+    raw_trips = data if isinstance(data, list) else [data]
+    try:
+        trips_data = [ImportTrip.model_validate(item) for item in raw_trips]
+    except ValidationError as exc:
+        details = [
+            {key: error[key] for key in ("type", "loc", "msg")}
+            for error in exc.errors(include_url=False, include_input=False)
+        ]
+        raise HTTPException(
+            status_code=422,
+            detail=details,
+        ) from exc
 
-    imported = 0
-    errors = []
-    for idx, trip_data in enumerate(trips_data):
-        savepoint = db.begin_nested()
-        try:
-            _import_trip_data(trip_data, idx, db, user_id)
-            savepoint.commit()
-            imported += 1
-        except (KeyError, ValueError) as e:
-            savepoint.rollback()
-            errors.append(f"第 {idx + 1} 条记录导入失败: {str(e)}")
-            continue
+    for trip_data in trips_data:
+        _import_trip_data(trip_data, db, user_id)
 
     db.commit()
-
-    result = {"message": f"成功导入 {imported} 条旅行记录"}
-    if errors:
-        result["errors"] = errors
-    return result
+    return {"message": f"成功导入 {len(trips_data)} 条旅行记录"}

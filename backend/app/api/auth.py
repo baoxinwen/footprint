@@ -61,7 +61,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="用户名或密码错误")
 
     clear_login_attempts(req.username, ip)
-    token = create_access_token(user.id)
+    token = create_access_token(user.id, user.auth_version)
     return TokenResponse(access_token=token)
 
 
@@ -76,8 +76,9 @@ def change_password(
         logger.error(f"修改密码失败: 用户不存在 (user_id: {user_id})")
         raise HTTPException(status_code=404, detail="用户不存在")
 
-    check_password_change_cooldown(user_id)
-
+    # 先校验当前密码与新密码一致性，再检查冷却：
+    # 避免冷却期内的用户输错当前密码时得到误导性的 429，
+    # 也避免仅凭 token 探测"该账号近期是否改过密码"
     if req.new_password != req.confirm_password:
         logger.warning(f"修改密码失败: 两次输入不一致 (user_id: {user_id})")
         raise HTTPException(status_code=400, detail="两次输入的新密码不一致")
@@ -85,7 +86,10 @@ def change_password(
         logger.warning(f"修改密码失败: 当前密码错误 (user_id: {user_id})")
         raise HTTPException(status_code=400, detail="当前密码错误")
 
+    check_password_change_cooldown(user_id)
+
     user.password_hash = hash_password(req.new_password)
+    user.auth_version += 1
     db.flush()
     db.commit()
 

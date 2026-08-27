@@ -1,6 +1,6 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from fastapi.responses import FileResponse
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -11,6 +11,8 @@ from app.models.trip import Trip
 from app.models.photo import Photo
 from app.schemas.photo import PhotoResponse
 from app.utils.image import validate_image, save_image, delete_image_files
+from app.utils.upload import UploadSizeExceeded, read_upload_limited
+from app.utils.storage import StoredFileUnavailable, UnsafeStoredPath, stored_file_response
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +48,10 @@ async def upload_photo(
         raise HTTPException(status_code=404, detail="地点不存在")
 
     # Validate file size
-    file_bytes = await file.read()
-    if len(file_bytes) > settings.MAX_FILE_SIZE:
-        logger.warning(f"照片上传失败: 文件过大 ({len(file_bytes)} bytes, 限制: {settings.MAX_FILE_SIZE})")
+    try:
+        file_bytes = await read_upload_limited(file, settings.MAX_FILE_SIZE)
+    except UploadSizeExceeded:
+        logger.warning(f"照片上传失败: 文件超过限制 ({settings.MAX_FILE_SIZE} bytes)")
         raise HTTPException(status_code=400, detail="文件大小超过 10MB 限制")
 
     # Validate file type
@@ -67,8 +70,20 @@ async def upload_photo(
         file_size=len(file_bytes),
     )
     db.add(photo)
-    db.flush()
-    db.commit()
+    try:
+        db.flush()
+        db.commit()
+    except SQLAlchemyError:
+        # 数据库写入失败时清理已落盘的文件，避免孤儿文件
+        db.rollback()
+        try:
+            delete_image_files(paths["original_path"], paths["thumbnail_path"])
+        except Exception as cleanup_error:
+            logger.warning(
+                f"回滚后清理照片文件失败: {paths['original_path']}, {paths['thumbnail_path']}, 错误: {cleanup_error}"
+            )
+        logger.exception("照片数据库记录写入失败")
+        raise HTTPException(status_code=500, detail="照片保存失败，请稍后重试")
     db.refresh(photo)
 
     return _photo_response(photo)
@@ -86,10 +101,10 @@ def get_original(
     ).first()
     if not photo:
         raise HTTPException(status_code=404, detail="照片不存在")
-    path = settings.UPLOAD_DIR / photo.original_path
-    if not path.exists():
+    try:
+        return stored_file_response(settings.UPLOAD_DIR, photo.original_path)
+    except (StoredFileUnavailable, UnsafeStoredPath):
         raise HTTPException(status_code=404, detail="文件不存在")
-    return FileResponse(path)
 
 
 @router.get("/{photo_id}/thumbnail")
@@ -104,10 +119,10 @@ def get_thumbnail(
     ).first()
     if not photo:
         raise HTTPException(status_code=404, detail="照片不存在")
-    path = settings.UPLOAD_DIR / photo.thumbnail_path
-    if not path.exists():
+    try:
+        return stored_file_response(settings.UPLOAD_DIR, photo.thumbnail_path)
+    except (StoredFileUnavailable, UnsafeStoredPath):
         raise HTTPException(status_code=404, detail="文件不存在")
-    return FileResponse(path)
 
 
 @router.delete("/{photo_id}")
@@ -123,9 +138,18 @@ def delete_photo(
     if not photo:
         raise HTTPException(status_code=404, detail="照片不存在")
 
-    delete_image_files(photo.original_path, photo.thumbnail_path)
+    # 先提交数据库删除，成功后再删物理文件：即使后续删文件失败，
+    # 也只是留下无记录的孤儿文件（可清扫），不会出现指向缺失文件的活记录
+    original_path = photo.original_path
+    thumbnail_path = photo.thumbnail_path
+
     db.delete(photo)
     db.commit()
+
+    try:
+        delete_image_files(original_path, thumbnail_path)
+    except Exception as e:
+        logger.warning(f"删除照片文件失败: {original_path}, {thumbnail_path}, 错误: {e}")
     return {"message": "删除成功"}
 
 

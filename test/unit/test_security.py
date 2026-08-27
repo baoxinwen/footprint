@@ -3,10 +3,37 @@
 关联用例: TC-AUTH-005, TC-AUTH-006, TC-SEC-003
 """
 import pytest
+import bcrypt
 from datetime import datetime, timedelta, timezone
 from app.core.security import hash_password, verify_password, create_access_token
 import jwt
 from app.core.config import settings
+
+
+@pytest.mark.unit
+class TestPasswordByteLimit:
+    def test_hash_password_accepts_exact_bcrypt_byte_limit(self):
+        password = "密" * 24
+        assert verify_password(password, hash_password(password))
+
+    def test_hash_password_rejects_password_over_bcrypt_byte_limit(self):
+        with pytest.raises(ValueError, match="72"):
+            hash_password("密" * 25)
+
+    def test_verify_password_supports_legacy_truncated_hash(self):
+        password = "密" * 25
+        legacy_hash = bcrypt.hashpw(
+            password.encode("utf-8")[:72],
+            bcrypt.gensalt(),
+        ).decode("utf-8")
+        assert verify_password(password, legacy_hash)
+
+
+@pytest.mark.unit
+def test_token_contains_auth_version():
+    token = create_access_token(42, auth_version=3)
+    payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+    assert payload["ver"] == 3
 
 
 @pytest.mark.unit

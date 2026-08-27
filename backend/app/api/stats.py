@@ -20,8 +20,8 @@ from app.schemas.stats import (
 router = APIRouter(prefix="/api/stats", tags=["统计分析"])
 
 ROUTE_COLORS = [
-    "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7",
-    "#DDA0DD", "#98D8C8", "#F7DC6F", "#BB8FCE", "#85C1E9",
+    "#1F5C46", "#C64B36", "#2F5F8F", "#704A82", "#7A531E",
+    "#276966", "#743D53", "#526A32", "#3F5F6B", "#8C3F2C",
 ]
 
 

@@ -8,6 +8,8 @@ import requests
 import json
 import io
 
+pytestmark = pytest.mark.deployed
+
 BASE_URL = "http://localhost:8002"
 
 

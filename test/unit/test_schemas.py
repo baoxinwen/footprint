@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.user import RegisterRequest
-from app.schemas.trip import TripCreate
+from app.schemas.trip import TripCreate, TripUpdate
 
 
 @pytest.mark.unit
@@ -66,6 +66,33 @@ class TestTripCreateSchema:
                 end_date="2025-10-01",
             )
 
+    def test_whitespace_only_title_rejected(self):
+        with pytest.raises(ValidationError):
+            TripCreate(
+                title="   ",
+                start_date="2025-10-01",
+                end_date="2025-10-03",
+            )
+
+    def test_title_is_trimmed(self):
+        trip = TripCreate(
+            title="  测试旅行  ",
+            start_date="2025-10-01",
+            end_date="2025-10-03",
+        )
+        assert trip.title == "测试旅行"
+
+    def test_description_preserves_markdown_edge_whitespace(self):
+        description = "    indented first line\n\nbody\n  "
+        trip = TripCreate(
+            title="测试",
+            description=description,
+            start_date="2025-10-01",
+            end_date="2025-10-03",
+        )
+
+        assert trip.description == description
+
     def test_missing_start_date(self):
         """缺少 start_date 应报错。"""
         with pytest.raises(Exception):
@@ -75,3 +102,34 @@ class TestTripCreateSchema:
         """缺少 end_date 应报错。"""
         with pytest.raises(Exception):
             TripCreate(title="Test", start_date="2025-01-01")
+
+
+@pytest.mark.unit
+class TestTripUpdateSchema:
+    def test_whitespace_only_title_rejected(self):
+        with pytest.raises(ValidationError):
+            TripUpdate(title="   ")
+
+    def test_title_length_is_bounded(self):
+        with pytest.raises(ValidationError):
+            TripUpdate(title="a" * 201)
+
+    def test_description_preserves_markdown_edge_whitespace(self):
+        description = "    indented first line\n\nbody\n  "
+
+        assert TripUpdate(description=description).description == description
+
+    def test_location_ids_cannot_repeat(self):
+        location = {
+            "id": 7,
+            "name": "故宫",
+            "address": "景山前街 4 号",
+            "longitude": 116.397,
+            "latitude": 39.916,
+            "city": "北京",
+            "province": "北京",
+            "note": None,
+        }
+
+        with pytest.raises(ValidationError, match="地点 ID 不能重复"):
+            TripUpdate(locations=[location, location])

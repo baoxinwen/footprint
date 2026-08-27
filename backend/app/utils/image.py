@@ -4,6 +4,7 @@ import logging
 from PIL import Image
 
 from app.core.config import settings
+from app.utils.storage import StoredFileUnavailable, UnsafeStoredPath, delete_stored_file
 
 Image.MAX_IMAGE_PIXELS = settings.MAX_IMAGE_PIXELS
 
@@ -25,6 +26,9 @@ def validate_image(file_bytes: bytes) -> bool:
 
 
 def save_image(file_bytes: bytes, original_filename: str) -> dict:
+    if len(file_bytes) > settings.MAX_FILE_SIZE:
+        raise ValueError("文件大小超过限制")
+
     ext = original_filename.rsplit(".", 1)[-1].lower() if "." in original_filename else "jpg"
     # 严格验证扩展名在允许列表中，不再自动推断
     if ext not in settings.ALLOWED_EXTENSIONS:
@@ -43,16 +47,27 @@ def save_image(file_bytes: bytes, original_filename: str) -> dict:
     original_path.write_bytes(file_bytes)
 
     # Generate thumbnail
-    from io import BytesIO
-    img = Image.open(BytesIO(file_bytes))
-    if hasattr(img, "n_frames") and img.n_frames > 1:
-        img.seek(0)
-    img = img.convert("RGB")
-    width = settings.THUMBNAIL_WIDTH
-    ratio = width / img.width
-    height = int(img.height * ratio)
-    thumb = img.resize((width, height), Image.LANCZOS)
-    thumb.save(thumbnail_path, "JPEG", quality=settings.THUMBNAIL_QUALITY)
+    try:
+        from io import BytesIO
+        img = Image.open(BytesIO(file_bytes))
+        if hasattr(img, "n_frames") and img.n_frames > 1:
+            img.seek(0)
+        img = img.convert("RGB")
+        width = settings.THUMBNAIL_WIDTH
+        ratio = width / img.width
+        height = int(img.height * ratio)
+        thumb = img.resize((width, height), Image.LANCZOS)
+        thumb.save(thumbnail_path, "JPEG", quality=settings.THUMBNAIL_QUALITY)
+    except Exception:
+        # 缩略图生成失败（如头部合法但像素级损坏、磁盘满）时，
+        # 清理已落盘的原图与半成品缩略图，避免产生无法通过 API 清除的孤儿文件
+        for stale_path in (original_path, thumbnail_path):
+            try:
+                if stale_path.exists():
+                    stale_path.unlink()
+            except OSError as cleanup_error:
+                logger.warning(f"清理上传失败文件出错: {stale_path}, 错误: {cleanup_error}")
+        raise
 
     return {
         "original_path": original_name,
@@ -62,9 +77,8 @@ def save_image(file_bytes: bytes, original_filename: str) -> dict:
 
 def delete_image_files(original_path: str, thumbnail_path: str):
     upload_dir = settings.UPLOAD_DIR
-    for p in [upload_dir / original_path, upload_dir / thumbnail_path]:
+    for stored_path in [original_path, thumbnail_path]:
         try:
-            if p.exists():
-                p.unlink()
-        except Exception as e:
-            logger.warning(f"删除文件失败 {p}: {e}")
+            delete_stored_file(upload_dir, stored_path)
+        except (StoredFileUnavailable, UnsafeStoredPath) as e:
+            logger.warning(f"拒绝删除不安全或不存在的照片文件 {stored_path}: {e}")

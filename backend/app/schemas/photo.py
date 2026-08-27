@@ -1,7 +1,9 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class PhotoResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     location_id: int
     original_url: str
@@ -9,6 +11,3 @@ class PhotoResponse(BaseModel):
     file_name: str
     file_size: int
     created_at: str
-
-    class Config:
-        from_attributes = True

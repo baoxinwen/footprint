@@ -10,6 +10,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 import os
 os.environ["JWT_SECRET"] = "test-secret-key-for-testing-only"
 os.environ["AMAP_KEY"] = "test-amap-key"
+# 阻止 rate_limit 在导入时启动后台清理线程，避免测试中的非确定性干扰
+os.environ["TESTING"] = "1"
 
 import pytest
 from sqlalchemy import create_engine
@@ -71,9 +73,12 @@ def client():
         yield c
 
     fastapi_app.dependency_overrides.pop(get_db, None)
+    for session in _shared_session:
+        session.close()
     _shared_session.clear()
     rate_limit_module.reset_all()
     Base.metadata.drop_all(bind=engine)
+    engine.dispose()
 
 
 @pytest.fixture()

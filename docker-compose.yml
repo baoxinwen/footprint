@@ -1,25 +1,63 @@
 services:
+  data-init:
+    image: ghcr.io/baoxinwen/footprint/backend:${FOOTPRINT_IMAGE_TAG:?请在 .env 中设置不可变镜像标签}
+    user: "0:0"
+    command:
+      - python
+      - -m
+      - app.utils.data_dir
+    environment:
+      - FOOTPRINT_DATA_ROOT=/footprint-data
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+    volumes:
+      - ${FOOTPRINT_DATA_DIR:-./data}:/footprint-data
+    restart: "no"
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    security_opt:
+      - no-new-privileges:true
+
   frontend:
-    image: ghcr.io/baoxinwen/footprint/frontend:main
+    image: ghcr.io/baoxinwen/footprint/frontend:${FOOTPRINT_IMAGE_TAG:?请在 .env 中设置不可变镜像标签}
     ports:
-      - "80:80"
+      - "${FOOTPRINT_BIND:-0.0.0.0}:8001:8080"
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
   backend:
-    image: ghcr.io/baoxinwen/footprint/backend:main
+    image: ghcr.io/baoxinwen/footprint/backend:${FOOTPRINT_IMAGE_TAG:?请在 .env 中设置不可变镜像标签}
+    user: "${PUID:-1000}:${PGID:-1000}"
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8002:8000"
     volumes:
-      - ./data/db:/app/data
-      - ./data/uploads:/app/uploads
+      - ${FOOTPRINT_DATA_DIR:-./data}:/app/footprint-data
     environment:
-      - JWT_SECRET=${JWT_SECRET}
+      - JWT_SECRET=${JWT_SECRET:?请在 .env 中设置至少 32 UTF-8 字节的随机密钥}
+      # 后端信任的反代地址；存在外层 HTTPS 反代时设为其网段以获取真实客户端 IP
+      - BACKEND_TRUSTED_PROXIES=${BACKEND_TRUSTED_PROXIES:-*}
       - AMAP_KEY=${AMAP_KEY}
-      - DATABASE_URL=sqlite:///./data/footprint.db
-      - UPLOAD_DIR=/app/uploads
+      - AMAP_SECURITY_CODE=${AMAP_SECURITY_CODE:-}
+      - DATABASE_URL=sqlite:////app/footprint-data/db/footprint.db
+      - UPLOAD_DIR=/app/footprint-data/uploads
+      - EXPORT_TMP_DIR=/app/footprint-data/tmp
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 30s
@@ -27,3 +65,10 @@ services:
       retries: 3
       start_period: 10s
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

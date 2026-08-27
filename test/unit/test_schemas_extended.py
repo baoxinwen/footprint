@@ -5,6 +5,7 @@
 import pytest
 from pydantic import ValidationError
 
+from app.schemas.export_import import ImportTrip
 from app.schemas.location import LocationCreate, LocationUpdate, SortOrderUpdate
 from app.schemas.user import ChangePasswordRequest
 
@@ -37,41 +38,47 @@ class TestLocationCreateSchema:
                 province="北京",
             )
 
-    def test_empty_address_raises(self):
-        """空地址应校验失败。"""
+    def test_whitespace_only_name_rejected(self):
+        data = {
+            "name": "故宫",
+            "address": "景山前街4号",
+            "longitude": 116.397128,
+            "latitude": 39.916527,
+            "city": "北京",
+            "province": "北京",
+        }
+        data["name"] = "   "
         with pytest.raises(ValidationError):
-            LocationCreate(
-                name="故宫",
-                address="",
-                longitude=116.397128,
-                latitude=39.916527,
-                city="北京",
-                province="北京",
-            )
+            LocationCreate(**data)
 
-    def test_empty_city_raises(self):
-        """空城市应校验失败。"""
-        with pytest.raises(ValidationError):
-            LocationCreate(
-                name="故宫",
-                address="景山前街4号",
-                longitude=116.397128,
-                latitude=39.916527,
-                city="",
-                province="北京",
-            )
+    def test_missing_amap_metadata_is_accepted_and_trimmed(self):
+        location = LocationCreate(
+            name="  无地址景点  ",
+            address="   ",
+            longitude=116.397128,
+            latitude=39.916527,
+            city="   ",
+            province="   ",
+        )
 
-    def test_empty_province_raises(self):
-        """空省份应校验失败。"""
-        with pytest.raises(ValidationError):
-            LocationCreate(
-                name="故宫",
-                address="景山前街4号",
-                longitude=116.397128,
-                latitude=39.916527,
-                city="北京",
-                province="",
-            )
+        assert location.name == "无地址景点"
+        assert location.address == ""
+        assert location.city == ""
+        assert location.province == ""
+
+    def test_note_preserves_markdown_edge_whitespace(self):
+        note = "    indented first line\n\nbody\n  "
+        location = LocationCreate(
+            name="故宫",
+            address="",
+            longitude=116.397128,
+            latitude=39.916527,
+            city="",
+            province="",
+            note=note,
+        )
+
+        assert location.note == note
 
     def test_longitude_out_of_range_raises(self):
         """经度超出范围应校验失败。"""
@@ -130,6 +137,64 @@ class TestLocationUpdateSchema:
         loc = LocationUpdate(name="新名称")
         assert loc.name == "新名称"
         assert loc.address is None
+
+    def test_whitespace_only_name_rejected(self):
+        with pytest.raises(ValidationError):
+            LocationUpdate(name="   ")
+
+    def test_structured_fields_are_trimmed_but_note_is_preserved(self):
+        note = "    indented first line\n  "
+        location = LocationUpdate(
+            name="  新名称  ",
+            address="   ",
+            city="  北京  ",
+            province="  北京  ",
+            note=note,
+        )
+
+        assert location.name == "新名称"
+        assert location.address == ""
+        assert location.city == "北京"
+        assert location.province == "北京"
+        assert location.note == note
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [("longitude", 181.0), ("latitude", 91.0)],
+    )
+    def test_coordinate_range_is_validated(self, field, value):
+        with pytest.raises(ValidationError):
+            LocationUpdate(**{field: value})
+
+
+@pytest.mark.unit
+class TestImportTripSchema:
+    def test_import_preserves_markdown_and_accepts_missing_amap_metadata(self):
+        description = "    trip code block\n  "
+        note = "    location code block\n  "
+        trip = ImportTrip.model_validate({
+            "title": "  导入旅行  ",
+            "description": description,
+            "startDate": "2025-10-01",
+            "endDate": "2025-10-03",
+            "locations": [{
+                "name": "  未知区域景点  ",
+                "address": "   ",
+                "longitude": 116.397128,
+                "latitude": 39.916527,
+                "city": "   ",
+                "province": "   ",
+                "note": note,
+            }],
+        })
+
+        assert trip.title == "导入旅行"
+        assert trip.description == description
+        assert trip.locations[0].name == "未知区域景点"
+        assert trip.locations[0].address == ""
+        assert trip.locations[0].city == ""
+        assert trip.locations[0].province == ""
+        assert trip.locations[0].note == note
 
 
 @pytest.mark.unit

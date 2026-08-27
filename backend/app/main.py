@@ -1,18 +1,18 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
-from app.core.database import init_db
-from app.core.config import settings
+from app.core.config import settings, validate_jwt_secret
+from app.core.migrations import run_startup_migrations
+from app.utils.zip_utils import cleanup_stale_temp_zips
 from app.api import auth, trips, photos, shares, stats, timeline, export_import, amap, account, search
 
 
 @asynccontextmanager
 async def lifespan(app):
-    if not settings.JWT_SECRET:
-        raise RuntimeError("JWT_SECRET must be set in environment")
-    init_db()
+    validate_jwt_secret(settings.JWT_SECRET)
+    run_startup_migrations()
+    cleanup_stale_temp_zips()
     yield
     # 关闭 HTTP 客户端，释放连接资源
     from app.api.amap import close_http_client
@@ -20,15 +20,6 @@ async def lifespan(app):
 
 
 app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
-
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
-)
 
 # Mount uploads for static serving
 settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -53,7 +44,8 @@ def health():
 
 @app.get("/api/config")
 def get_config():
-    """前端需要 AMAP_KEY 初始化地图（公开 key，非敏感信息）。"""
+    """Return the public browser-side AMap configuration."""
     return {
         "amap_key": settings.AMAP_KEY,
+        "amap_security_code": settings.AMAP_SECURITY_CODE,
     }

@@ -4,6 +4,7 @@
 """
 import json
 import pytest
+from starlette.datastructures import UploadFile
 
 
 @pytest.mark.integration
@@ -32,10 +33,43 @@ class TestImportValidation:
             files={"file": ("trip.json", json.dumps(data).encode(), "application/json")},
             headers=auth_headers,
         )
-        assert resp.status_code == 200
-        result = resp.json()
-        assert "errors" in result
-        assert "名称不能为空" in result["errors"][0]
+        assert resp.status_code == 422
+
+    @pytest.mark.parametrize(
+        "field,value",
+        [("title", "   "), ("location_name", "   ")],
+    )
+    def test_import_whitespace_only_names_rejected(
+        self, client, auth_headers, field, value
+    ):
+        data = {
+            "title": value if field == "title" else "测试旅行",
+            "startDate": "2025-06-01",
+            "endDate": "2025-06-03",
+            "locations": [{
+                "name": value if field == "location_name" else "测试地点",
+                "address": "测试地址",
+                "longitude": 116.0,
+                "latitude": 39.0,
+                "city": "北京",
+                "province": "北京",
+            }],
+        }
+        resp = client.post(
+            "/api/trips/import",
+            files={"file": ("trip.json", json.dumps(data).encode(), "application/json")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 422
+
+    def test_import_invalid_utf8_returns_bad_request(self, client, auth_headers):
+        resp = client.post(
+            "/api/trips/import",
+            files={"file": ("trip.json", b"\xff\xfe\xfa", "application/json")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "JSON 格式错误"
 
     def test_import_invalid_longitude_rejected(self, client, auth_headers):
         """无效经度应被拒绝。"""
@@ -59,10 +93,7 @@ class TestImportValidation:
             files={"file": ("trip.json", json.dumps(data).encode(), "application/json")},
             headers=auth_headers,
         )
-        assert resp.status_code == 200
-        result = resp.json()
-        assert "errors" in result
-        assert "经纬度范围无效" in result["errors"][0]
+        assert resp.status_code == 422
 
     def test_import_invalid_latitude_rejected(self, client, auth_headers):
         """无效纬度应被拒绝。"""
@@ -86,10 +117,28 @@ class TestImportValidation:
             files={"file": ("trip.json", json.dumps(data).encode(), "application/json")},
             headers=auth_headers,
         )
+        assert resp.status_code == 422
+
+    def test_import_accepts_integer_coordinates(self, client, auth_headers):
+        data = {
+            "title": "整数坐标旅行",
+            "startDate": "2025-06-01",
+            "endDate": "2025-06-03",
+            "locations": [{
+                "name": "测试地点",
+                "address": "测试地址",
+                "longitude": 116,
+                "latitude": 39,
+                "city": "北京",
+                "province": "北京",
+            }],
+        }
+        resp = client.post(
+            "/api/trips/import",
+            files={"file": ("trip.json", json.dumps(data).encode(), "application/json")},
+            headers=auth_headers,
+        )
         assert resp.status_code == 200
-        result = resp.json()
-        assert "errors" in result
-        assert "经纬度范围无效" in result["errors"][0]
 
     def test_import_array_of_trips(self, client, auth_headers):
         """导入多条旅行记录。"""
@@ -137,10 +186,69 @@ class TestImportValidation:
             files={"file": ("trip.json", json.dumps(data).encode(), "application/json")},
             headers=auth_headers,
         )
-        assert resp.status_code == 200
-        result = resp.json()
-        assert "errors" in result
-        assert "startDate" in result["errors"][0]
+        assert resp.status_code == 422
+
+    @pytest.mark.parametrize(
+        "data",
+        [
+            None,
+            {
+                "title": "空地点",
+                "startDate": "2025-06-01",
+                "endDate": "2025-06-03",
+                "locations": None,
+            },
+            {
+                "title": "数字字符串",
+                "startDate": "2025-06-01",
+                "endDate": "2025-06-03",
+                "locations": [{
+                    "name": "地点",
+                    "address": "地址",
+                    "longitude": "116.0",
+                    "latitude": 39.0,
+                    "city": "北京",
+                    "province": "北京",
+                }],
+            },
+            {
+                "title": "反向日期",
+                "startDate": "2025-06-03",
+                "endDate": "2025-06-01",
+                "locations": [],
+            },
+        ],
+        ids=["root-null", "locations-null", "string-coordinate", "reversed-dates"],
+    )
+    def test_import_schema_errors_return_422(self, client, auth_headers, data):
+        resp = client.post(
+            "/api/trips/import",
+            files={"file": ("trip.json", json.dumps(data).encode(), "application/json")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 422
+
+    def test_import_reads_with_a_bounded_size(self, client, auth_headers, monkeypatch):
+        from app.core.config import settings
+
+        original_read = UploadFile.read
+        requested_sizes = []
+
+        async def tracking_read(upload, size=-1):
+            requested_sizes.append(size)
+            return await original_read(upload, size)
+
+        monkeypatch.setattr(UploadFile, "read", tracking_read)
+        monkeypatch.setattr(settings, "MAX_IMPORT_SIZE", 32)
+        resp = client.post(
+            "/api/trips/import",
+            files={"file": ("trip.json", b"x" * 100, "application/json")},
+            headers=auth_headers,
+        )
+
+        assert resp.status_code == 400
+        assert requested_sizes
+        assert all(0 < size <= 33 for size in requested_sizes)
 
 
 @pytest.mark.integration

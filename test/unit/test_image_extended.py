@@ -29,6 +29,7 @@ class TestSaveImage:
             mock_settings.UPLOAD_DIR = tmp_path
             mock_settings.THUMBNAIL_WIDTH = 300
             mock_settings.THUMBNAIL_QUALITY = 85
+            mock_settings.MAX_FILE_SIZE = 10 * 1024 * 1024
 
             result = save_image(file_bytes, "test.jpg")
             assert "original_path" in result
@@ -48,6 +49,7 @@ class TestSaveImage:
             mock_settings.UPLOAD_DIR = tmp_path
             mock_settings.THUMBNAIL_WIDTH = 300
             mock_settings.THUMBNAIL_QUALITY = 85
+            mock_settings.MAX_FILE_SIZE = 10 * 1024 * 1024
 
             result = save_image(file_bytes, "test.png")
             assert result["original_path"].endswith(".png")
@@ -61,6 +63,7 @@ class TestSaveImage:
 
         with patch("app.utils.image.settings") as mock_settings:
             mock_settings.ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp"}
+            mock_settings.MAX_FILE_SIZE = 10 * 1024 * 1024
 
             with pytest.raises(ValueError, match="不支持的文件格式"):
                 save_image(file_bytes, "test.exe")
@@ -77,6 +80,7 @@ class TestSaveImage:
             mock_settings.UPLOAD_DIR = tmp_path
             mock_settings.THUMBNAIL_WIDTH = 300
             mock_settings.THUMBNAIL_QUALITY = 85
+            mock_settings.MAX_FILE_SIZE = 10 * 1024 * 1024
 
             result = save_image(file_bytes, "photo")
             # 无扩展名时 ext 为 "jpg"（因为 "photo".rsplit(".", 1)[-1] == "photo"，不在允许列表中）
@@ -84,6 +88,17 @@ class TestSaveImage:
             # 实际上 "photo" 没有 "."，所以 ext = "jpg"（默认值）
             # 但 "jpg" 在允许列表中，所以应该成功
             assert result["original_path"].endswith(".jpg")
+
+    def test_save_image_rejects_oversized_bytes_before_writing(self, tmp_path):
+        with patch("app.utils.image.settings") as mock_settings:
+            mock_settings.ALLOWED_EXTENSIONS = {"jpg"}
+            mock_settings.UPLOAD_DIR = tmp_path
+            mock_settings.MAX_FILE_SIZE = 8
+
+            with pytest.raises(ValueError, match="文件大小超过"):
+                save_image(b"not-written", "photo.jpg")
+
+        assert list(tmp_path.iterdir()) == []
 
     def test_save_image_gif_creates_static_thumbnail(self, tmp_path):
         """GIF 文件应创建静态缩略图（第一帧）。"""
@@ -97,10 +112,25 @@ class TestSaveImage:
             mock_settings.UPLOAD_DIR = tmp_path
             mock_settings.THUMBNAIL_WIDTH = 300
             mock_settings.THUMBNAIL_QUALITY = 85
+            mock_settings.MAX_FILE_SIZE = 10 * 1024 * 1024
 
             result = save_image(file_bytes, "test.gif")
             assert result["original_path"].endswith(".gif")
             assert result["thumbnail_path"].endswith("_thumb.jpg")
+
+            # 原图必须是完整的多帧 GIF（未被缩略图流程改动）
+            original = Image.open(tmp_path / result["original_path"])
+            assert original.format == "GIF"
+            assert getattr(original, "n_frames", 1) > 1
+
+            # 缩略图必须是单帧静态 JPEG，且像素取自第一帧（红色）——
+            # 若实现漏掉 seek(0) 或输出了动图/原格式，此处即失败。
+            # JPEG 有损压缩会有轻微色度偏移，用容差比较。
+            thumb = Image.open(tmp_path / result["thumbnail_path"])
+            assert thumb.format == "JPEG"
+            assert getattr(thumb, "n_frames", 1) == 1
+            pixel = thumb.convert("RGB").getpixel((0, 0))
+            assert all(abs(actual - expected) <= 12 for actual, expected in zip(pixel, (255, 0, 0)))
 
 
 @pytest.mark.unit
@@ -137,3 +167,19 @@ class TestDeleteImageFiles:
             # 原图存在，缩略图不存在
             delete_image_files("test.jpg", "nonexistent_thumb.jpg")
             assert not orig.exists()
+
+    def test_delete_refuses_symbolic_link(self, tmp_path):
+        outside = tmp_path.parent / "outside-photo.jpg"
+        outside.write_bytes(b"keep me")
+        link = tmp_path / "test.jpg"
+        try:
+            link.symlink_to(outside)
+        except (OSError, NotImplementedError) as exc:
+            pytest.skip(f"当前平台不支持测试符号链接: {exc}")
+
+        with patch("app.utils.image.settings") as mock_settings:
+            mock_settings.UPLOAD_DIR = tmp_path
+            delete_image_files("test.jpg", "missing-thumb.jpg")
+
+        assert link.is_symlink()
+        assert outside.read_bytes() == b"keep me"

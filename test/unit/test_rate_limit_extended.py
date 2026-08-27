@@ -110,3 +110,51 @@ class TestCleanupExpiredEntries:
         _cleanup_expired_entries()
 
         assert "user1:127.0.0.1" not in _login_attempts
+
+
+@pytest.mark.unit
+class TestLoginGlobalLayer:
+    """登录限流第二层：同一用户名跨 IP 的全局失败上限（防轮换爆破）。"""
+
+    def setup_method(self):
+        reset_all()
+
+    def teardown_method(self):
+        reset_all()
+
+    def test_global_threshold_blocks_rotation_across_ips(self, monkeypatch):
+        """每个 IP 各失败 1 次、单 IP 远未触顶，但全局累计达阈值后，
+        全新 IP 也必须被拦截。"""
+        from app.core.config import settings
+
+        limit = settings.LOGIN_GLOBAL_MAX_ATTEMPTS
+        for i in range(limit):
+            ip = f"10.0.{i // 255}.{i % 255}"
+            check_login_rate("victim", ip)   # 此刻不应抛异常
+            record_login_failure("victim", ip)
+
+        with pytest.raises(HTTPException) as exc_info:
+            check_login_rate("victim", "10.99.99.99")  # 全新 IP
+        assert exc_info.value.status_code == 429
+
+    def test_below_global_threshold_passes(self):
+        """全局阈值之下（差 1 次）不应拦截正常尝试。"""
+        from app.core.config import settings
+
+        for i in range(settings.LOGIN_GLOBAL_MAX_ATTEMPTS - 1):
+            ip = f"10.1.{i // 255}.{i % 255}"
+            check_login_rate("victim2", ip)
+            record_login_failure("victim2", ip)
+
+        check_login_rate("victim2", "10.200.200.200")  # 不应抛异常
+
+    def test_successful_login_clears_global_counter(self, client=None):
+        """登录成功应同时清空 (username,ip) 与全局计数。"""
+        from app.utils import rate_limit as rl
+
+        rl.record_login_failure("clearme", "10.5.5.5")
+        assert rl._login_attempts_global["clearme"]
+
+        rl.clear_login_attempts("clearme", "10.5.5.5")
+        assert "clearme" not in rl._login_attempts_global
+        assert "clearme:10.5.5.5" not in rl._login_attempts

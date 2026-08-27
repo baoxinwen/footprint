@@ -46,3 +46,19 @@ class TestAmapPoiSearch:
             assert resp.json() == []
         finally:
             amap_module._http_client = None
+
+    def test_search_poi_amap_error_is_not_swallowed(self, client, auth_headers):
+        mock_client = self._make_mock_client({
+            "status": "0",
+            "info": "INVALID_USER_KEY",
+            "infocode": "10001",
+        })
+        amap_module._http_client = mock_client
+        try:
+            resp = client.get("/api/amap/poi/search", params={"keywords": "故宫"}, headers=auth_headers)
+            assert resp.status_code == 502
+            data = resp.json()
+            assert "INVALID_USER_KEY" in data["detail"]
+            assert "10001" in data["detail"]
+        finally:
+            amap_module._http_client = None

@@ -6,6 +6,7 @@ import json
 import zipfile
 import io
 import pytest
+from pathlib import Path
 
 
 @pytest.mark.integration
@@ -58,6 +59,57 @@ class TestExportMarkdown:
         names = zf.namelist()
         assert any(n.endswith(".md") for n in names)
         assert any("photos/" in n for n in names)
+
+    def test_markdown_photo_paths_match_unique_archive_entries(
+        self, client, auth_headers, sample_trip_data, test_image_bytes, upload_dir
+    ):
+        create_resp = client.post("/api/trips", json=sample_trip_data, headers=auth_headers)
+        trip_id = create_resp.json()["id"]
+        location_id = client.get(
+            f"/api/trips/{trip_id}", headers=auth_headers
+        ).json()["locations"][0]["id"]
+        for _ in range(2):
+            upload_resp = client.post(
+                f"/api/photos/upload/{location_id}",
+                files={"file": ("same.jpg", test_image_bytes, "image/jpeg")},
+                headers=auth_headers,
+            )
+            assert upload_resp.status_code == 201
+
+        resp = client.get(f"/api/trips/{trip_id}/export/markdown", headers=auth_headers)
+        assert resp.status_code == 200
+        with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+            names = zf.namelist()
+            assert len(names) == len(set(names))
+            markdown_name = next(name for name in names if name.endswith(".md"))
+            markdown = zf.read(markdown_name).decode("utf-8")
+            photo_names = [name for name in names if name.startswith("photos/")]
+            assert len(photo_names) == 2
+            for photo_name in photo_names:
+                assert f"]({photo_name})" in markdown
+
+    def test_markdown_zip_uses_and_cleans_a_temporary_file(
+        self, client, auth_headers, sample_trip_data, monkeypatch
+    ):
+        import app.api.export_import as export_module
+
+        create_resp = client.post("/api/trips", json=sample_trip_data, headers=auth_headers)
+        trip_id = create_resp.json()["id"]
+        real_zip_file = zipfile.ZipFile
+        write_targets = []
+
+        def tracking_zip_file(file, mode="r", *args, **kwargs):
+            if mode == "w":
+                write_targets.append(file)
+            return real_zip_file(file, mode, *args, **kwargs)
+
+        monkeypatch.setattr(export_module.zipfile, "ZipFile", tracking_zip_file)
+        resp = client.get(f"/api/trips/{trip_id}/export/markdown", headers=auth_headers)
+
+        assert resp.status_code == 200
+        assert len(write_targets) == 1
+        assert isinstance(write_targets[0], (str, Path))
+        assert not Path(write_targets[0]).exists()
 
 
 @pytest.mark.integration
