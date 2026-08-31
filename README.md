@@ -40,7 +40,7 @@ cd footprint
 
 ```bash
 cp .env.example .env
-# 编辑 .env，至少设置 JWT_SECRET 和已发布的 FOOTPRINT_IMAGE_TAG
+# 编辑 .env，至少设置 JWT_SECRET
 ```
 
 ### 3. Docker 部署
@@ -53,8 +53,8 @@ docker compose up -d
 ### 4. 访问应用
 
 - 前端：http://localhost:8001
-- 后端 API：http://127.0.0.1:8002
-- API 文档：http://127.0.0.1:8002/docs
+- 后端 API：http://<NAS 的 IP>:8002（对局域网开放）
+- API 文档：http://<NAS 的 IP>:8002/docs
 
 `8001` 默认是明文 HTTP，并发布到宿主机所有网络接口。局域网或公网部署时应在其前方配置 HTTPS 反向代理和防火墙，不要直接暴露到公网；外层代理也应关闭 `/api/shares/view/` 路径的访问日志，避免分享 token 进入日志。
 
@@ -127,10 +127,7 @@ npx playwright test
 | 变量 | 必填 | 说明 |
 |------|------|------|
 | `JWT_SECRET` | 是 | JWT 签名密钥 |
-| `FOOTPRINT_IMAGE_TAG` | 是 | 前后端共用的不可变镜像标签（如 `sha-1a2b3c4`） |
 | `FOOTPRINT_DATA_DIR` | 否 | 单一持久化数据根目录，默认 `./data` |
-| `FOOTPRINT_BIND` | 否 | 前端发布绑定的宿主机地址，默认 `0.0.0.0`；仅本机使用建议改 `127.0.0.1` |
-| `BACKEND_TRUSTED_PROXIES` | 否 | 后端信任的反代地址（uvicorn），默认 `*`；外层 HTTPS 反代时设为其网段以获取真实客户端 IP |
 | `PUID` / `PGID` | 否 | 后端写入持久化目录时使用的非 root 宿主机 UID/GID，必须大于 `0`，默认 `1000` |
 | `AMAP_KEY` | 否 | 高德地图 API Key（POI 搜索功能需要） |
 | `AMAP_SECURITY_CODE` | 否 | 高德地图 JS API 的浏览器端安全密钥 |

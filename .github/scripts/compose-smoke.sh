@@ -2,10 +2,10 @@
 set -euo pipefail
 
 project_name="footprint-smoke-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}"
-image_tag="ci-smoke-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}"
+# compose 文件中镜像标签固定为 main，冒烟构建直接使用该标签
+image_tag="main"
 data_dir="$(mktemp -d -t footprint-compose-XXXXXXXX)"
 
-export FOOTPRINT_IMAGE_TAG="$image_tag"
 export FOOTPRINT_DATA_DIR="$data_dir"
 export JWT_SECRET="ci-compose-smoke-secret-not-for-production-64-bytes-minimum-00000000"
 export AMAP_KEY=""

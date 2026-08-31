@@ -16,7 +16,7 @@ def _load_data_dir_module():
 
 
 @pytest.mark.unit
-def test_compose_requires_jwt_secret_and_example_does_not_supply_placeholder():
+def test_compose_passes_jwt_secret_through_and_example_does_not_supply_placeholder():
     compose = yaml.safe_load(
         (REPOSITORY_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
     )
@@ -25,7 +25,8 @@ def test_compose_requires_jwt_secret_and_example_does_not_supply_placeholder():
         item for item in backend_environment if item.startswith("JWT_SECRET=")
     )
 
-    assert jwt_assignment.startswith("JWT_SECRET=${JWT_SECRET:?")
+    # compose 只做透传，非空与长度校验由后端启动时 validate_jwt_secret 兜底
+    assert jwt_assignment == "JWT_SECRET=${JWT_SECRET}"
 
     example_values = {
         key: value
@@ -248,14 +249,19 @@ def test_backend_runtime_is_private_non_root_and_trusts_the_frontend_proxy():
     assert "exec setpriv --reuid=\"$PUID\" --regid=\"$PGID\"" in entrypoint
     assert "umask 077" in entrypoint
     assert "--proxy-headers" in entrypoint
-    assert '--forwarded-allow-ips="${BACKEND_TRUSTED_PROXIES:-*}"' in entrypoint
+    assert '--forwarded-allow-ips="172.16.0.0/12"' in entrypoint
     assert "--no-access-log" in entrypoint
 
     # root 仅为目录初始化保留最小能力；降权所需的 SETGID/SETUID 显式列出
     backend_caps = compose["services"]["backend"]["cap_add"]
     assert {"CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"} <= set(backend_caps)
     assert compose["services"]["backend"].get("user") is None
-    assert compose["services"]["backend"]["ports"] == ["127.0.0.1:8002:8000"]
+    assert compose["services"]["backend"]["ports"] == ["8002:8000"]
+    # 信任代理不再暴露为配置：写死 Docker 默认地址池，只采信容器内前端的转发头
+    assert all(
+        not item.startswith("BACKEND_TRUSTED_PROXIES=")
+        for item in compose["services"]["backend"]["environment"]
+    )
 
 
 @pytest.mark.unit

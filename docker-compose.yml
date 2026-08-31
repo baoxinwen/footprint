@@ -1,8 +1,8 @@
 services:
   frontend:
-    image: ghcr.io/baoxinwen/footprint/frontend:${FOOTPRINT_IMAGE_TAG:?请在 .env 中设置不可变镜像标签}
+    image: ghcr.io/baoxinwen/footprint/frontend:main
     ports:
-      - "${FOOTPRINT_BIND:-0.0.0.0}:8001:8080"
+      - "8001:8080"
     depends_on:
       backend:
         condition: service_healthy
@@ -16,15 +16,13 @@ services:
       - no-new-privileges:true
 
   backend:
-    image: ghcr.io/baoxinwen/footprint/backend:${FOOTPRINT_IMAGE_TAG:?请在 .env 中设置不可变镜像标签}
+    image: ghcr.io/baoxinwen/footprint/backend:main
     ports:
-      - "127.0.0.1:8002:8000"
+      - "8002:8000"
     volumes:
       - ${FOOTPRINT_DATA_DIR:-./data}:/app/footprint-data
     environment:
-      - JWT_SECRET=${JWT_SECRET:?请在 .env 中设置至少 32 UTF-8 字节的随机密钥}
-      # 后端信任的反代地址；存在外层 HTTPS 反代时设为其网段以获取真实客户端 IP
-      - BACKEND_TRUSTED_PROXIES=${BACKEND_TRUSTED_PROXIES:-*}
+      - JWT_SECRET=${JWT_SECRET}
       - AMAP_KEY=${AMAP_KEY}
       - AMAP_SECURITY_CODE=${AMAP_SECURITY_CODE:-}
       - DATABASE_URL=sqlite:////app/footprint-data/db/footprint.db
@@ -45,7 +43,6 @@ services:
       - /tmp:rw,noexec,nosuid,size=64m,mode=1777
     cap_drop:
       - ALL
-    # root 入口完成目录初始化所需；CHOWN 修属主，SETGID/SETUID 用于降权
     cap_add:
       - CHOWN
       - DAC_OVERRIDE
