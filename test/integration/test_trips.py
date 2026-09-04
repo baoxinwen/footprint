@@ -64,6 +64,20 @@ class TestListTrips:
         assert body["total"] >= 1
         assert all("北京" in item["title"] or "北京" in str(item.get("cities", [])) for item in body["items"])
 
+    def test_list_trips_search_with_location_count_sort(self, client, auth_headers, sample_trip_data):
+        """TC-TRIP-004b: search/city 筛选与按地点数排序组合（回归：曾因 Location 双 JOIN 报 500）。"""
+        client.post("/api/trips", json=sample_trip_data, headers=auth_headers)
+        client.post("/api/trips", json={**sample_trip_data, "title": "上海之旅"}, headers=auth_headers)
+
+        resp = client.get("/api/trips?search=北京&sort_by=location_count&order=desc", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["total"] >= 1
+
+        resp = client.get("/api/trips?city=北京&sort_by=location_count&order=desc", headers=auth_headers)
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert items[0]["location_count"] >= items[-1]["location_count"]
+
     def test_list_trips_sort_by_name(self, client, auth_headers, sample_trip_data):
         """TC-TRIP-006: 按名称排序。"""
         client.post("/api/trips", json={**sample_trip_data, "title": "B旅行"}, headers=auth_headers)

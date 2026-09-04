@@ -5,7 +5,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import get_db
@@ -40,67 +40,20 @@ def _trip_to_response(trip: Trip, cover_photo_id: int | None = None) -> TripResp
     )
 
 
-def _apply_trip_filters(
-    query,
-    search: str,
-    year: int | None,
-    month: int | None,
-    city: str,
-    date_from: str,
-    date_to: str,
-):
-    if search:
-        escaped = escape_like(search)
-        pattern = f"%{escaped}%"
-        query = query.join(Location, isouter=True).filter(
-            Trip.title.ilike(pattern, escape='\\')
-            | Trip.description.ilike(pattern, escape='\\')
-            | Location.city.ilike(pattern, escape='\\')
-        ).distinct()
-
-    if year:
-        query = query.filter(func.strftime("%Y", Trip.start_date) == str(year))
-
-    if month:
-        query = query.filter(func.strftime("%m", Trip.start_date) == f"{month:02d}")
-
-    if city:
-        escaped_city = escape_like(city)
-        query = query.join(Location, isouter=True).filter(
-            Location.city.ilike(f"%{escaped_city}%", escape='\\')
-        ).distinct()
-
-    if date_from or date_to:
-        date_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-        for label, value in (("date_from", date_from), ("date_to", date_to)):
-            if value and not date_pattern.match(value):
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"{label} 格式无效，应为 YYYY-MM-DD",
-                )
-        # SQLite 以 ISO 文本存储日期，仅允许规范格式参与字典序比较
-        try:
-            if date_from:
-                datetime.date.fromisoformat(date_from)
-            if date_to:
-                datetime.date.fromisoformat(date_to)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail="日期格式无效，应为 YYYY-MM-DD") from exc
-
-    if date_from:
-        query = query.filter(Trip.start_date >= date_from)
-
-    if date_to:
-        query = query.filter(Trip.end_date <= date_to)
-
-    return query
-
-
 def _sort_trips(query, sort_by: str, order: str):
     """排序统一追加 id 次级键，保证同键记录的翻页顺序稳定。"""
     if sort_by == "location_count":
-        order_col = func.count(Location.id)
-        query = query.outerjoin(Location).group_by(Trip.id)
+        # 用标量子查询统计地点数：不得在此 outerjoin(Location)——
+        # search/city 筛选分支可能已 JOIN 过同一张表，二次 JOIN 会让
+        # SQLite 报 ambiguous column（详见 docs/reviews/2026-09-04-full-project-review.md C2）
+        order_col = (
+            select(func.count(Location.id))
+            .where(Location.trip_id == Trip.id)
+            # 显式仅关联外层的 trips：禁用自动关联，防止外层 search/city
+            # 分支 JOIN locations 时子查询的 FROM 被错误省略
+            .correlate(Trip)
+            .scalar_subquery()
+        )
     elif sort_by == "name":
         order_col = Trip.title
     else:  # date (default)
