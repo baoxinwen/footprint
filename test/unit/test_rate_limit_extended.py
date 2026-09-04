@@ -158,3 +158,58 @@ class TestLoginGlobalLayer:
         rl.clear_login_attempts("clearme", "10.5.5.5")
         assert "clearme" not in rl._login_attempts_global
         assert "clearme:10.5.5.5" not in rl._login_attempts
+
+
+@pytest.mark.unit
+class TestConcurrentAccess:
+    """并发正确性（回归：评审 I1——共享结构曾为无锁读-改-写）。
+
+    check→record 之间隔着 bcrypt 的 TOCTOU 窗口属既定语义（方案 A：仅加锁）；
+    本测试锁定的是另一个真 bug：清理线程的「读-过滤-回写」覆盖并发 append
+    导致的丢失更新。锁存在时，任何交错下记录都不能丢。
+    """
+
+    def test_concurrent_records_survive_concurrent_cleanup(self):
+        import threading
+        import time as time_mod
+
+        from app.utils import rate_limit as rl
+
+        # 多写入线程持续 append，同时清理线程反复做「读-过滤-回写」。
+        # 锁存在时任何交错都不丢记录；该断言是 I1 修复后的守护。
+        for round_num in range(6):
+            rl.reset_all()
+            stale = datetime.now(timezone.utc) - timedelta(minutes=20)
+            rl._login_attempts["burst:127.0.0.1"] = [stale] * 300
+
+            deadline = time_mod.monotonic() + 0.3
+
+            def cleaner():
+                while time_mod.monotonic() < deadline:
+                    rl._cleanup_expired_entries()
+
+            start = threading.Barrier(4)
+            THREAD_RECORDS = 100
+
+            def recorder():
+                start.wait(timeout=5)
+                for _ in range(THREAD_RECORDS):
+                    rl.record_login_failure("burst", "127.0.0.1")
+
+            cleaner_thread = threading.Thread(target=cleaner, daemon=True)
+            recorder_threads = [
+                threading.Thread(target=recorder, daemon=True) for _ in range(4)
+            ]
+            cleaner_thread.start()
+            for thread in recorder_threads:
+                thread.start()
+            for thread in recorder_threads:
+                thread.join(timeout=10)
+            cleaner_thread.join(timeout=5)
+
+            survived = len(rl._login_attempts.get("burst:127.0.0.1", []))
+            total = 4 * THREAD_RECORDS
+            # 并发写入的记录必须全部幸存（过期预置记录被清掉属正常）
+            assert survived == total, (
+                f"第 {round_num} 轮丢失更新：仅剩 {survived}/{total} 条记录"
+            )
