@@ -62,3 +62,19 @@ class TestAmapPoiSearch:
             assert "10001" in data["detail"]
         finally:
             amap_module._http_client = None
+
+    def test_search_poi_invalid_json_returns_specific_error(self, client, auth_headers):
+        """R2-9 回归: 无效 JSON 的具体文案不得被外层 except Exception 吞成通用错误。"""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.side_effect = ValueError("invalid json")
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.is_closed = False
+        amap_module._http_client = mock_client
+        try:
+            resp = client.get("/api/amap/poi/search", params={"keywords": "故宫"}, headers=auth_headers)
+            assert resp.status_code == 502
+            assert resp.json()["detail"] == "地图服务返回无效数据"
+        finally:
+            amap_module._http_client = None
