@@ -1,5 +1,8 @@
 import logging
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -28,6 +31,11 @@ from app.utils.rate_limit import (
 
 logger = logging.getLogger(__name__)
 
+# 导入期预生成一份随机口令的 bcrypt 哈希：登录遇到不存在的用户名时也执行
+# 一次等价校验，抹平与「用户存在但密码错误」路径的响应时间差，
+# 防止用计时法枚举用户名（评审 R1-5）
+_DUMMY_PASSWORD_HASH = hash_password(secrets.token_urlsafe(16))
+
 router = APIRouter(prefix="/api/auth", tags=["认证"])
 
 
@@ -43,7 +51,14 @@ def register(req: RegisterRequest, request: Request, db: Session = Depends(get_d
     user = User(username=req.username, password_hash=hash_password(req.password))
     db.add(user)
     db.flush()
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # 并发注册同名用户的兜底：存在性检查与提交之间存在竞态窗口，
+        # UNIQUE 约束是数据层的最终防线，这里把约束冲突翻译回 400（评审 R1-4）
+        db.rollback()
+        logger.warning(f"注册失败: 用户名 '{req.username}' 已被占用 (IP: {ip})")
+        raise HTTPException(status_code=400, detail="该用户名已被占用")
 
     record_register_attempt(ip)
     return {"message": "注册成功"}
@@ -55,7 +70,14 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     check_login_rate(req.username, ip)
 
     user = db.query(User).filter(User.username == req.username).first()
-    if not user or not verify_password(req.password, user.password_hash):
+    if not user:
+        # 不存在的用户名也做一次等价 bcrypt 校验（见 _DUMMY_PASSWORD_HASH），
+        # 两条失败路径的耗时保持一致
+        verify_password(req.password, _DUMMY_PASSWORD_HASH)
+        record_login_failure(req.username, ip)
+        logger.warning(f"登录失败: 用户名或密码错误 '{req.username}' (IP: {ip})")
+        raise HTTPException(status_code=400, detail="用户名或密码错误")
+    if not verify_password(req.password, user.password_hash):
         record_login_failure(req.username, ip)
         logger.warning(f"登录失败: 用户名或密码错误 '{req.username}' (IP: {ip})")
         raise HTTPException(status_code=400, detail="用户名或密码错误")

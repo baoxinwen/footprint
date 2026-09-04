@@ -240,3 +240,47 @@ class TestAuthSecurity:
         """TC-SEC-002: 伪造 token。"""
         resp = client.get("/api/trips", headers={"Authorization": "Bearer fake-token"})
         assert resp.status_code == 401
+
+
+@pytest.mark.integration
+class TestRegisterRaceAndLoginTiming:
+    """评审 R1-4/R1-5 回归。"""
+
+    def test_register_unique_violation_maps_to_400(self, client, monkeypatch):
+        """R1-4: 并发注册同名用户撞 UNIQUE 约束时返回 400 而非 500。"""
+        from sqlalchemy.exc import IntegrityError
+        from sqlalchemy.orm import Session
+
+        from app.utils.rate_limit import reset_all
+
+        reset_all()
+
+        def commit_with_unique_violation(self):
+            raise IntegrityError(
+                "INSERT INTO users ...",
+                {},
+                Exception("UNIQUE constraint failed: users.username"),
+            )
+
+        monkeypatch.setattr(Session, "commit", commit_with_unique_violation)
+        resp = client.post("/api/auth/register", json={"username": "raceuser", "password": "123456"})
+        assert resp.status_code == 400
+        assert "已被占用" in resp.json()["detail"]
+
+    def test_login_unknown_username_still_runs_password_verify(self, client, monkeypatch):
+        """R1-5: 用户不存在时也执行一次等价 bcrypt 校验，抹平可枚举用户名的时序差。"""
+        from app.core import security
+
+        calls = []
+        original = security.verify_password
+
+        def spy(password, hashed):
+            calls.append(1)
+            return original(password, hashed)
+
+        monkeypatch.setattr("app.api.auth.verify_password", spy)
+        resp = client.post(
+            "/api/auth/login", json={"username": "ghost-user-no-exist", "password": "whatever123"}
+        )
+        assert resp.status_code == 400
+        assert len(calls) == 1, "用户不存在时跳过了密码校验，存在计时侧信道"
