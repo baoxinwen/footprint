@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { invalidateAuthSession } from '../utils/authSession'
 import { TOKEN_STORAGE_KEY } from '../utils/storageKeys'
+import { decodeJwtPayload } from '../utils/jwt'
 
 const routes = [
   { path: '/login', name: 'Login', component: () => import('../views/LoginView.vue') },
@@ -27,13 +28,14 @@ router.beforeEach((to, _from, next) => {
     if (!token) {
       return next('/login')
     }
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]))
-      if (payload.exp * 1000 < Date.now()) {
-        invalidateAuthSession()
-        return next('/login')
-      }
-    } catch {
+    // decodeJwtPayload 统一做 base64url 归一化，payload 形状变化时不再
+    // 因 atob 抛错而误杀有效会话；解析失败仍按无效 token 处理
+    const payload = decodeJwtPayload(token)
+    if (!payload) {
+      invalidateAuthSession()
+      return next('/login')
+    }
+    if (Number(payload.exp) * 1000 < Date.now()) {
       invalidateAuthSession()
       return next('/login')
     }

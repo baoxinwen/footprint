@@ -20,6 +20,12 @@ mediaQuery.addEventListener('change', (e) => {
   }
 })
 
+// auto 模式在启动时即与系统主题对齐：matchMedia 监听器只在「变化」时触发，
+// 应用关闭期间系统切换过主题的话，存储里的 isDark 已陈旧（评审 R3-2）
+if (themeMode.value === 'auto' && mediaQuery.matches !== isDark.value) {
+  toggleDark()
+}
+
 export function useTheme() {
   function setTheme(mode: string) {
     themeMode.value = mode

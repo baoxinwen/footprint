@@ -1,21 +1,15 @@
 import { TOKEN_STORAGE_KEY } from './storageKeys'
+import { decodeJwtPayload } from './jwt'
 
 const LEGACY_TRIP_DRAFT_KEY = 'footprint:trip-draft'
 const TRIP_DRAFT_KEY_PREFIX = `${LEGACY_TRIP_DRAFT_KEY}:`
 
 function getTokenSubject(token: string): string | null {
-  try {
-    const encodedPayload = token.split('.')[1]
-    if (!encodedPayload) return null
-    const normalizedPayload = encodedPayload.replace(/-/g, '+').replace(/_/g, '/')
-    const paddedPayload = normalizedPayload.padEnd(Math.ceil(normalizedPayload.length / 4) * 4, '=')
-    const payload = JSON.parse(atob(paddedPayload)) as { sub?: unknown }
-    if (typeof payload.sub !== 'string' && typeof payload.sub !== 'number') return null
-    const subject = String(payload.sub).trim()
-    return subject || null
-  } catch {
-    return null
-  }
+  const payload = decodeJwtPayload(token)
+  if (!payload) return null
+  if (typeof payload.sub !== 'string' && typeof payload.sub !== 'number') return null
+  const subject = String(payload.sub).trim()
+  return subject || null
 }
 
 export function getTripDraftKey(token = localStorage.getItem(TOKEN_STORAGE_KEY) || ''): string {
