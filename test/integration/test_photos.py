@@ -3,6 +3,7 @@
 关联用例: TC-PHOTO-001 ~ TC-PHOTO-007
 """
 import pytest
+from PIL import Image
 from io import BytesIO
 from starlette.datastructures import UploadFile
 
@@ -223,3 +224,80 @@ class TestPhotoNegativeCases:
     def test_delete_nonexistent_photo(self, client, auth_headers):
         resp = client.delete("/api/photos/99999", headers=auth_headers)
         assert resp.status_code == 404
+
+
+@pytest.mark.integration
+class TestUploadEdgeCases:
+    """上传校验与事件循环回归（评审 I2/I3）。"""
+
+    def _create_trip_with_location(self, client, auth_headers, sample_trip_data):
+        resp = client.post("/api/trips", json=sample_trip_data, headers=auth_headers)
+        detail = client.get(f"/api/trips/{resp.json()['id']}", headers=auth_headers).json()
+        return resp.json()["id"], detail["locations"][0]["id"]
+
+    def test_valid_magic_bytes_with_disallowed_extension_returns_400(
+        self, client, auth_headers, sample_trip_data, test_image_bytes, upload_dir
+    ):
+        """I2 回归: 魔数合法但扩展名不在白名单 → 400（曾穿透 save_image 的 ValueError 变 500）。"""
+        _, loc_id = self._create_trip_with_location(client, auth_headers, sample_trip_data)
+
+        resp = client.post(
+            f"/api/photos/upload/{loc_id}",
+            files={"file": ("photo.txt", test_image_bytes, "text/plain")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "不支持的文件格式" in resp.json()["detail"]
+
+    def test_extreme_aspect_ratio_image_uploads_successfully(
+        self, client, auth_headers, sample_trip_data, upload_dir
+    ):
+        """I2 回归: 600x1 合法 JPEG 曾因缩略图高度取整为 0 抛 ValueError 变 500。"""
+        buf = BytesIO()
+        Image.new("RGB", (600, 1), color=(10, 200, 10)).save(buf, "JPEG")
+
+        _, loc_id = self._create_trip_with_location(client, auth_headers, sample_trip_data)
+
+        resp = client.post(
+            f"/api/photos/upload/{loc_id}",
+            files={"file": ("thin.jpg", buf.getvalue(), "image/jpeg")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+
+    def test_thumbnail_generation_does_not_block_event_loop(
+        self, client, auth_headers, sample_trip_data, test_image_bytes, upload_dir, monkeypatch
+    ):
+        """I3 回归: PIL 重活必须离开事件循环执行（曾在 async 端点内同步运行，
+        处理期间阻塞整个服务的全部并发请求）。"""
+        import asyncio
+
+        from app.api import photos as photos_mod
+
+        _, loc_id = self._create_trip_with_location(client, auth_headers, sample_trip_data)
+
+        original_save = photos_mod.save_image
+        probe = {}
+
+        def probing_save_image(*args, **kwargs):
+            # 在端点的调用上下文中探测：事件循环线程上会拿到 running loop，
+            # 线程池工作线程上则拿不到
+            try:
+                asyncio.get_running_loop()
+                probe["on_event_loop"] = True
+            except RuntimeError:
+                probe["on_event_loop"] = False
+            return original_save(*args, **kwargs)
+
+        monkeypatch.setattr(photos_mod, "save_image", probing_save_image)
+
+        resp = client.post(
+            f"/api/photos/upload/{loc_id}",
+            files={"file": ("test.jpg", test_image_bytes, "image/jpeg")},
+            headers=auth_headers,
+        )
+
+        assert resp.status_code == 201
+        assert probe.get("on_event_loop") is False, (
+            "save_image（PIL 解码/缩放）运行在事件循环线程上，会阻塞全部并发请求"
+        )

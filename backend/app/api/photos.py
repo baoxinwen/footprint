@@ -2,6 +2,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.core.database import get_db
 from app.core.security import get_current_user_id
@@ -55,12 +56,19 @@ async def upload_photo(
         raise HTTPException(status_code=400, detail="文件大小超过 10MB 限制")
 
     # Validate file type
-    if not validate_image(file_bytes):
+    if not await run_in_threadpool(validate_image, file_bytes):
         logger.warning(f"照片上传失败: 非法图片格式 (filename: {file.filename})")
         raise HTTPException(status_code=400, detail="不是合法的图片文件")
 
-    # Save
-    paths = save_image(file_bytes, file.filename or "photo.jpg")
+    # Save。save_image 会做扩展名白名单等输入校验（ValueError）与 PIL 重活：
+    # 前者映射为 400，后者必须卸载到线程池，避免阻塞事件循环上的全部并发请求
+    try:
+        paths = await run_in_threadpool(
+            save_image, file_bytes, file.filename or "photo.jpg"
+        )
+    except ValueError as exc:
+        logger.warning(f"照片上传失败: {exc} (filename: {file.filename})")
+        raise HTTPException(status_code=400, detail=str(exc))
 
     photo = Photo(
         location_id=location_id,

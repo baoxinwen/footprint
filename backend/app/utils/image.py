@@ -55,7 +55,8 @@ def save_image(file_bytes: bytes, original_filename: str) -> dict:
         img = img.convert("RGB")
         width = settings.THUMBNAIL_WIDTH
         ratio = width / img.width
-        height = int(img.height * ratio)
+        # max(1,...) 兜底极端宽高比（如 600x1）：int 截断取 0 会让 resize 抛 ValueError
+        height = max(1, int(img.height * ratio))
         thumb = img.resize((width, height), Image.LANCZOS)
         thumb.save(thumbnail_path, "JPEG", quality=settings.THUMBNAIL_QUALITY)
     except Exception:
