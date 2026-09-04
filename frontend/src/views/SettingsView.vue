@@ -89,9 +89,12 @@ async function handleRotateShare(share: ShareListItem) {
   shareActions.value[share.token] = 'rotate'
   try {
     const { data } = await rotateShare(share.trip_id)
-    shares.value = shares.value.map((item) => (
-      item.token === share.token ? { ...item, ...data } : item
-    ))
+    // 后端轮换会删除该旅行的全部 Share 记录（含已过期的残留条目）再新建，
+    // 因此除被点击条目原位替换外，同旅行的其他条目必须移除，
+    // 否则列表残留幽灵记录、对它们操作只会收到误导性的 404（评审 R4-6）
+    shares.value = shares.value
+      .filter((item) => item.trip_id !== share.trip_id || item.token === share.token)
+      .map((item) => (item.token === share.token ? { ...item, ...data } : item))
     ElMessage.success('分享链接已轮换，旧链接立即失效')
   } catch {
     ElMessage.error('轮换分享链接失败，请稍后重试')

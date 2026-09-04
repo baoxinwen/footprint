@@ -127,18 +127,44 @@ function restoreFocus() {
   previouslyFocusedElement = null
 }
 
+// 打开期间锁定背景滚动：查看器是不可滚动的全屏覆盖层，
+// 滚动链会传导到 document 导致背后页面滚动（评审 R4-5）
+let savedBodyOverflow: string | null = null
+
+function lockBodyScroll() {
+  savedBodyOverflow = document.body.style.overflow
+  document.body.style.overflow = 'hidden'
+}
+
+function restoreBodyScroll() {
+  if (savedBodyOverflow !== null) {
+    document.body.style.overflow = savedBodyOverflow
+    savedBodyOverflow = null
+  }
+}
+
 watch(() => props.visible, (visible, wasVisible) => {
-  if (visible && !wasVisible) rememberFocusAndOpen()
-  if (!visible && wasVisible) restoreFocus()
+  if (visible && !wasVisible) {
+    rememberFocusAndOpen()
+    lockBodyScroll()
+  }
+  if (!visible && wasVisible) {
+    restoreFocus()
+    restoreBodyScroll()
+  }
 })
 
 onMounted(() => {
   document.addEventListener('keydown', handleKeydown)
-  if (props.visible) rememberFocusAndOpen()
+  if (props.visible) {
+    rememberFocusAndOpen()
+    lockBodyScroll()
+  }
 })
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown)
   restoreFocus()
+  restoreBodyScroll()
 })
 </script>
 

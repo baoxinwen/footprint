@@ -545,7 +545,7 @@ async function handleSave() {
             </el-input>
 
             <div v-if="poiResults.length" class="poi-results">
-              <button v-for="poi in poiResults" :key="poi.name" type="button" class="poi-item" @click="addPoi(poi)">
+              <button v-for="poi in poiResults" :key="poi.name + '|' + poi.address + '|' + poi.location.lng + ',' + poi.location.lat" type="button" class="poi-item" @click="addPoi(poi)">
                 <div class="poi-name">{{ poi.name }}</div>
                 <div class="poi-address">{{ poi.address }}</div>
               </button>

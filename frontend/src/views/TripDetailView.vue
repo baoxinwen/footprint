@@ -139,6 +139,12 @@ async function loadPhotos(locationId: number) {
 
 const uploadingLocations = ref<Set<number>>(new Set())
 
+// 上传/删除成功后同步地点行的照片计数，否则摘要栏会一直显示旧值
+function bumpPhotoCount(locationId: number, delta: number) {
+  const loc = trip.value?.locations.find((item) => item.id === locationId)
+  if (loc) loc.photo_count = Math.max(0, (loc.photo_count || 0) + delta)
+}
+
 async function handleUpload(locationId: number, file: File) {
   if (uploadingLocations.value.has(locationId)) {
     ElMessage.warning('当前地点正在上传中，请稍候')
@@ -148,6 +154,7 @@ async function handleUpload(locationId: number, file: File) {
   try {
     await uploadPhoto(locationId, file)
     ElMessage.success('上传成功')
+    bumpPhotoCount(locationId, 1)
     loadPhotos(locationId)
   } catch {
     ElMessage.error('上传失败')
@@ -174,6 +181,7 @@ async function handleDeletePhoto(photoId: number, locationId: number) {
   try {
     await deletePhoto(photoId)
     ElMessage.success('删除成功')
+    bumpPhotoCount(locationId, -1)
     loadPhotos(locationId)
   } catch {
     ElMessage.error('删除失败')

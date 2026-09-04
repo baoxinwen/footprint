@@ -104,7 +104,12 @@ onMounted(async () => {
     renderCityMarkers()
   } catch (error) {
     console.error('加载数据失败:', error)
-    ElMessage.error('加载地图数据失败，请刷新页面重试')
+    if (error instanceof Error && error.message === '请填写 AMAP_KEY') {
+      // 配置缺失刷新解决不了，给出可行动的指引（评审 R4-2）
+      ElMessage.error('未配置高德地图 AMAP_KEY，请在服务端 .env 中配置后重启')
+    } else {
+      ElMessage.error('加载地图数据失败，请刷新页面重试')
+    }
   }
 })
 
@@ -367,7 +372,10 @@ async function selectTrip(tripId: number | null) {
       }, 200)
     }
   } else {
-    // 只显示城市标记，不显示路线
+    // 只显示城市标记，不显示路线。
+    // 先取消在途的 fitView 定时器，否则它会在恢复默认视野后把
+    // 视野又拉去适配城市标记（评审 R4-1）
+    clearFitViewTimer()
     renderCityMarkers()
     map.value.setCenter([104.065735, 30.659462])
     map.value.setZoom(5)
