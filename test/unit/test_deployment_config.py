@@ -231,6 +231,37 @@ def test_backend_image_keeps_application_source_owned_by_root():
 
 
 @pytest.mark.unit
+def test_uvicorn_proxy_headers_support_cidr_trusted_networks():
+    """回归（评审 C1）：entrypoint 以 --forwarded-allow-ips="172.16.0.0/12" 写死信任网段，
+    锁定的 uvicorn 版本必须真的支持网段写法——0.30.x 只做字符串精确比较，
+    网段永不匹配，导致 X-Forwarded-For 被整体忽略、限流拿到 nginx 容器 IP。"""
+    import asyncio
+
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+    captured = {}
+
+    async def app(scope, receive, send):
+        captured["client"] = scope["client"]
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        captured.setdefault("messages", []).append(message)
+
+    scope = {
+        "type": "http",
+        "client": ("172.18.0.5", 52341),  # nginx 容器 IP，位于 172.16.0.0/12 内
+        "headers": [(b"x-forwarded-for", b"203.0.113.7")],
+    }
+    middleware = ProxyHeadersMiddleware(app, trusted_hosts="172.16.0.0/12")
+    asyncio.run(middleware(scope, receive, send))
+
+    assert captured["client"] == ("203.0.113.7", 0)
+
+
+@pytest.mark.unit
 def test_backend_runtime_is_private_non_root_and_trusts_the_frontend_proxy():
     dockerfile = (REPOSITORY_ROOT / "backend" / "Dockerfile").read_text(
         encoding="utf-8"
@@ -272,6 +303,14 @@ def test_nginx_replaces_forwarded_for_and_hides_share_tokens_from_access_log():
 
     assert "$proxy_add_x_forwarded_for" not in nginx
     assert nginx.count("proxy_set_header X-Forwarded-For $remote_addr;") == 2
+    # 外层 HTTPS 反代场景（README 推荐部署方式）：仅信任 Docker 网段来源的
+    # X-Forwarded-For 还原真实客户端 IP，公网直连不受影响（评审 I7）
+    assert "set_real_ip_from 172.16.0.0/12;" in nginx
+    assert "real_ip_header X-Forwarded-For;" in nginx
+    assert "real_ip_recursive on;" in nginx
+    # 静态缓存块（正则 location）必须排除 /api/，防止未来以扩展名结尾的
+    # API 路由被截胡成静态 404（评审 R5-6）
+    assert "^(?!/api/).*\\.(js|css|" in nginx
     share_location = "location ~ ^/api/shares/(?:view|photo)/ {"
     assert share_location in nginx
     share_location_body = nginx.split(share_location, 1)[1].split("\n    }", 1)[0]
