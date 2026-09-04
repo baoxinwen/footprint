@@ -27,6 +27,9 @@ export async function acquireImageResource(src: string, signal?: AbortSignal): P
   const response = await request.get<Blob>(getPrivatePhotoRequestPath(src), {
     responseType: 'blob',
     signal,
+    // 批量图片加载失败由调用方（照片墙/地图标记）自行汇总提示，
+    // 不在拦截器里逐请求弹 toast
+    meta: { silent: true },
   })
   const objectUrl = URL.createObjectURL(response.data)
   let released = false

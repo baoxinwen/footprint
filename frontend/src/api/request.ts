@@ -47,8 +47,16 @@ let authRedirectInProgress = false
 request.interceptors.response.use(
   (response) => response,
   (error) => {
+    // 主动取消（搜索防抖、图片懒加载切换等 abort）不是错误：
+    // 静默透传，避免虚假的「网络错误」toast
+    if (error?.code === 'ERR_CANCELED') {
+      return Promise.reject(error)
+    }
     if (error.response) {
       const { status, data } = error.response
+      // meta.silent：批量图片等场景由视图层汇总错误，不逐请求弹 toast；
+      // 401 的会话失效跳转不受其影响
+      const silent = error.config?.meta?.silent === true
       if (status === 401) {
         // Don't redirect on login failures
         const alreadyOnLogin = router.currentRoute?.value?.path === '/login'
@@ -63,9 +71,9 @@ request.interceptors.response.use(
           ElMessage.error('登录已过期，请重新登录')
         }
       } else if (status === 429) {
-        ElMessage.error(extractDetail(data) ?? '操作过于频繁，请稍后再试')
+        if (!silent) ElMessage.error(extractDetail(data) ?? '操作过于频繁，请稍后再试')
       } else {
-        ElMessage.error(extractDetail(data) ?? '请求失败')
+        if (!silent) ElMessage.error(extractDetail(data) ?? '请求失败')
       }
     } else {
       ElMessage.error('网络错误')

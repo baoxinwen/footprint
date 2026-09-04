@@ -105,4 +105,24 @@ describe('Request Module', () => {
     ).rejects.toBeTruthy()
     expect(errorMessageMock).toHaveBeenLastCalledWith('请求失败')
   })
+
+  it('treats aborted requests as silent rejections, not network errors', async () => {
+    // 回归（评审 I4）：搜索防抖/图片懒加载切换会主动 abort 在途请求，
+    // 这不是网络错误，不应弹 toast
+    const cancelError = Object.assign(new Error('canceled'), { code: 'ERR_CANCELED' })
+    await expect(rejectResponse(cancelError)).rejects.toBe(cancelError)
+    expect(errorMessageMock).not.toHaveBeenCalled()
+  })
+
+  it('suppresses per-request toast for requests marked silent', async () => {
+    // 回归（评审 R4-7）：批量图片加载失败由视图层汇总提示，
+    // 标记 meta.silent 的请求不再逐请求弹错（401 跳转逻辑不受影响）
+    await expect(
+      rejectResponse({
+        response: { status: 500, data: {} },
+        config: { url: '/photos/1/thumbnail', meta: { silent: true } },
+      })
+    ).rejects.toBeTruthy()
+    expect(errorMessageMock).not.toHaveBeenCalled()
+  })
 })
