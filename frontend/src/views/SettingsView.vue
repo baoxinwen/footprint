@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { changePassword } from '../api/auth'
 import { getShares, revokeShare, rotateShare } from '../api/shares'
 import request from '../api/request'
@@ -10,6 +10,7 @@ import { downloadBlob, scrollToSection } from '../utils/dom'
 import type { ShareListItem } from '../types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
+  Check,
   CopyDocument,
   Delete,
   Document,
@@ -58,6 +59,11 @@ onMounted(() => {
   loadShares()
 })
 
+onUnmounted(() => {
+  window.clearTimeout(copiedTimer)
+  window.clearTimeout(copiedFadeTimer)
+})
+
 function absoluteShareUrl(url: string) {
   return new URL(url, window.location.origin).toString()
 }
@@ -66,10 +72,27 @@ function isShareExpired(share: ShareListItem) {
   return new Date(share.expires_at).getTime() <= Date.now()
 }
 
+// 铁律 9/10：复制成功以按钮内对勾反馈（欠阻尼微弹入场），
+// 2.5s 后淡出自熄恢复，不再弹 toast
+const copiedToken = ref<string | null>(null)
+const copiedFading = ref(false)
+let copiedTimer = 0
+let copiedFadeTimer = 0
+
 async function copyShareLink(share: ShareListItem) {
   try {
     await navigator.clipboard.writeText(absoluteShareUrl(share.url))
-    ElMessage.success('分享链接已复制')
+    window.clearTimeout(copiedTimer)
+    window.clearTimeout(copiedFadeTimer)
+    copiedFading.value = false
+    copiedToken.value = share.token
+    copiedTimer = window.setTimeout(() => {
+      copiedFading.value = true
+      copiedFadeTimer = window.setTimeout(() => {
+        copiedToken.value = null
+        copiedFading.value = false
+      }, 260)
+    }, 2500)
   } catch {
     ElMessage.error('复制分享链接失败，请检查浏览器权限')
   }
@@ -275,12 +298,19 @@ const railItems = [
                 <button
                   type="button"
                   class="share-action-button"
+                  :class="{ 'is-copied': copiedToken === share.token }"
                   :data-testid="`copy-share-${share.token}`"
-                  :aria-label="`复制${share.trip_title}的分享链接`"
+                  :aria-label="copiedToken === share.token ? `已复制${share.trip_title}的分享链接` : `复制${share.trip_title}的分享链接`"
                   @click="copyShareLink(share)"
                 >
-                  <el-icon><CopyDocument /></el-icon>
-                  <span>复制链接</span>
+                  <el-icon
+                    v-if="copiedToken === share.token"
+                    class="pop-check share-copied"
+                    :class="{ 'is-fading': copiedFading }"
+                    aria-hidden="true"
+                  ><Check /></el-icon>
+                  <el-icon v-else aria-hidden="true"><CopyDocument /></el-icon>
+                  <span>{{ copiedToken === share.token ? '已复制' : '复制链接' }}</span>
                 </button>
                 <button
                   type="button"
@@ -448,7 +478,7 @@ const railItems = [
 
 .page-kicker {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   letter-spacing: 0.22em;
   color: var(--color-accent);
   margin-bottom: var(--space-sm);
@@ -458,7 +488,7 @@ const railItems = [
   font-family: var(--font-serif);
   font-size: var(--text-2xl);
   line-height: var(--lh-2xl);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .page-desc {
@@ -522,7 +552,7 @@ const railItems = [
 .section-title {
   font-family: var(--font-serif);
   font-size: var(--text-md);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--color-ink);
   margin-bottom: var(--space-md);
   padding-bottom: var(--space-md);
@@ -577,7 +607,7 @@ const railItems = [
 
 .info-value {
   font-size: var(--text-base);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--color-ink);
 }
 
@@ -657,7 +687,7 @@ const railItems = [
   background: var(--color-primary-soft);
   color: var(--color-primary);
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 
 .share-status.expired {
@@ -694,19 +724,28 @@ const railItems = [
   gap: 6px;
   height: 34px;
   padding: 0 14px;
-  border: 1px solid var(--color-border);
+  /* 铁律 1：去边框，控件面用 field 层明度区分 */
+  border: none;
   border-radius: 999px;
-  background: var(--color-surface);
+  background: var(--color-field);
   color: var(--color-ink-secondary);
   font-size: var(--text-xs);
   cursor: pointer;
-  transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease, background-color var(--dur-fast) ease;
+  transition: color var(--dur-fast) ease, background-color var(--dur-fast) ease;
 }
 
 .share-action-button:hover:not(:disabled) {
   color: var(--color-primary);
-  border-color: var(--color-primary);
   background: var(--color-primary-soft);
+}
+
+.share-copied {
+  color: var(--color-primary);
+  transition: opacity var(--dur-base) ease;
+}
+
+.share-copied.is-fading {
+  opacity: 0;
 }
 
 .share-action-button:disabled {
@@ -741,7 +780,7 @@ const railItems = [
 
 .action-title {
   font-size: var(--text-base);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--color-ink);
 }
 
@@ -818,7 +857,7 @@ const railItems = [
 
 .theme-label {
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--color-ink);
 }
 
@@ -849,7 +888,7 @@ const railItems = [
 
 .form-label {
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--color-ink-secondary);
 }
 
@@ -883,7 +922,7 @@ const railItems = [
   background: var(--color-primary);
   color: var(--color-on-primary);
   font-size: var(--text-base);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   cursor: pointer;
   transition: background-color var(--dur-base) ease, box-shadow var(--dur-base) ease;
 }
@@ -932,7 +971,7 @@ const railItems = [
 
 .about-value {
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--color-ink);
 }
 

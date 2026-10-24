@@ -313,7 +313,10 @@ describe('TripDetailView', () => {
 
     expect(wrapper.text()).toContain('上海周末')
     expect(wrapper.get('.location-toggle').attributes('aria-expanded')).toBe('false')
-    expect(wrapper.find('.photo-item').exists()).toBe(false)
+    // 铁律 7 后面板常驻渲染：断言折叠语义（未展开 + inert）而非节点缺席
+    const collapsedPanel = wrapper.get('.location-collapse')
+    expect(collapsedPanel.classes()).not.toContain('open')
+    expect(collapsedPanel.attributes('inert')).toBeDefined()
     await wrapper.get('.action-btn.primary').trigger('click')
     expect(mockPush).toHaveBeenCalledWith('/trips/2/edit')
   })

@@ -9,6 +9,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ArrowDown,
   ArrowLeft,
+  Check,
   Delete,
   Document,
   Download,
@@ -238,7 +239,17 @@ async function handleShare() {
   }
   try {
     await navigator.clipboard.writeText(url)
-    ElMessage.success('分享链接已复制到剪贴板')
+    // 铁律 10：按钮内对勾反馈，2.5s 后自熄恢复，不再弹 toast
+    shareCopied.value = true
+    shareCopiedFading.value = false
+    window.clearTimeout(shareCopiedTimer)
+    shareCopiedTimer = window.setTimeout(() => {
+      shareCopiedFading.value = true
+      shareCopiedTimer = window.setTimeout(() => {
+        shareCopied.value = false
+        shareCopiedFading.value = false
+      }, 260)
+    }, 2500)
   } catch {
     // 剪贴板权限失败时分享已创建，展示链接供手动复制
     ElMessageBox.alert(url, '分享链接创建成功，请手动复制', { confirmButtonText: '知道了' })
@@ -254,6 +265,11 @@ async function handleExport(format: 'json' | 'markdown') {
   }
   showExportDialog.value = false
 }
+
+/* ---------- 分享复制反馈（铁律 9/10：欠阻尼微弹入场，2.5s 自熄） ---------- */
+const shareCopied = ref(false)
+const shareCopiedFading = ref(false)
+let shareCopiedTimer = 0
 
 /* ---------- 拖拽排序（PRD 5.6，桌面端） ---------- */
 const dragIndex = ref<number | null>(null)
@@ -364,9 +380,20 @@ defineExpose({ refreshPhotos: loadPhotos })
                 <el-icon aria-hidden="true"><Download /></el-icon>
                 <span>导出</span>
               </button>
-              <button type="button" class="action-btn secondary" @click="handleShare">
-                <el-icon aria-hidden="true"><Share /></el-icon>
-                <span>分享</span>
+              <button
+                type="button"
+                class="action-btn secondary"
+                :aria-label="shareCopied ? '分享链接已复制' : '创建分享链接'"
+                @click="handleShare"
+              >
+                <el-icon v-if="!shareCopied" aria-hidden="true"><Share /></el-icon>
+                <el-icon
+                  v-else
+                  aria-hidden="true"
+                  class="pop-check share-copied"
+                  :class="{ 'is-fading': shareCopiedFading }"
+                ><Check /></el-icon>
+                <span>{{ shareCopied ? '已复制' : '分享' }}</span>
               </button>
               <button type="button" class="action-btn danger" @click="handleDelete">
                 <el-icon aria-hidden="true"><Delete /></el-icon>
@@ -422,7 +449,7 @@ defineExpose({ refreshPhotos: loadPhotos })
             添加地点
           </button>
         </div>
-        <ol v-else class="locations-list">
+        <TransitionGroup v-else tag="ol" name="locations" class="locations-list">
           <li
             v-for="(loc, index) in trip.locations"
             :key="loc.id"
@@ -455,20 +482,26 @@ defineExpose({ refreshPhotos: loadPhotos })
                 <span class="location-name">{{ loc.name }}</span>
                 <span class="location-city">{{ loc.city }} · {{ loc.province }}</span>
               </span>
-              <span class="location-summary">{{ loc.photo_count || 0 }} 张照片</span>
+              <span class="location-summary tnums">{{ loc.photo_count || 0 }} 张照片</span>
               <el-icon class="expand-icon" :class="{ expanded: expandedLocations.has(loc.id) }" aria-hidden="true">
                 <ArrowDown />
               </el-icon>
             </button>
 
-            <transition name="expand">
-              <div
-                v-if="expandedLocations.has(loc.id)"
-                :id="`location-panel-${loc.id}`"
-                class="location-body"
-                role="region"
-                :aria-labelledby="`location-toggle-${loc.id}`"
-              >
+            <!-- 铁律 7：Grid 0fr→1fr 过渡折叠，免 JS 算高；收起内容 inert 防聚焦 -->
+            <div
+              class="location-collapse"
+              :class="{ open: expandedLocations.has(loc.id) }"
+              :inert="!expandedLocations.has(loc.id)"
+              :aria-hidden="!expandedLocations.has(loc.id)"
+            >
+              <div class="location-collapse-clip">
+                <div
+                  :id="`location-panel-${loc.id}`"
+                  class="location-body"
+                  role="region"
+                  :aria-labelledby="`location-toggle-${loc.id}`"
+                >
                 <section class="photos-section" aria-label="照片">
                   <h3 class="section-label">照片</h3>
                   <div class="photos-grid">
@@ -518,10 +551,11 @@ defineExpose({ refreshPhotos: loadPhotos })
                   <h3 class="section-label">游记</h3>
                   <div class="markdown-body" v-html="renderNote(loc.note)"></div>
                 </section>
+                </div>
               </div>
-            </transition>
+            </div>
           </li>
-        </ol>
+        </TransitionGroup>
       </section>
     </div>
 
@@ -663,7 +697,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 
 .hero-kicker {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   letter-spacing: 0.24em;
   color: var(--color-accent);
   text-transform: uppercase;
@@ -673,7 +707,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 .trip-title {
   font-size: var(--text-3xl);
   line-height: var(--lh-3xl);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   color: inherit;
   text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
 }
@@ -749,7 +783,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 .hero-stats dd {
   font-family: var(--font-serif);
   font-size: var(--text-md);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   color: #f4f2ec;
 }
 
@@ -767,7 +801,7 @@ defineExpose({ refreshPhotos: loadPhotos })
   padding: 0 18px;
   border-radius: 999px;
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   cursor: pointer;
   border: 1px solid transparent;
   transition: background-color var(--dur-base) var(--ease-out),
@@ -846,7 +880,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 .strip-title {
   font-size: var(--text-lg);
   line-height: var(--lh-lg);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .strip-count {
@@ -917,7 +951,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 
 .section-kicker {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   letter-spacing: 0.22em;
   color: var(--color-accent);
   margin-bottom: 4px;
@@ -926,10 +960,11 @@ defineExpose({ refreshPhotos: loadPhotos })
 .route-heading {
   font-size: var(--text-lg);
   line-height: var(--lh-lg);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .route-count {
+  font-variant-numeric: tabular-nums;
   font-size: var(--text-xs);
   color: var(--color-ink-muted);
   letter-spacing: 0.05em;
@@ -953,7 +988,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 .route-empty-title {
   font-family: var(--font-serif);
   font-size: var(--text-md);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--color-ink);
 }
 
@@ -971,7 +1006,7 @@ defineExpose({ refreshPhotos: loadPhotos })
   background: var(--color-primary);
   color: var(--color-on-primary);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   cursor: pointer;
   transition: background-color var(--dur-base) ease, box-shadow var(--dur-base) ease;
 }
@@ -1000,22 +1035,26 @@ defineExpose({ refreshPhotos: loadPhotos })
 .location-section {
   position: relative;
   margin-bottom: var(--space-md);
-  border: 1px solid var(--color-border);
+  /* 铁律 1：去边框，卡片面靠 surface/canvas 明度差 + 阴影分层 */
+  border: none;
   border-radius: var(--radius-md);
   background: var(--color-surface);
+  box-shadow: var(--shadow-soft);
   overflow: hidden;
-  transition: border-color var(--dur-base) var(--ease-out),
-    box-shadow var(--dur-base) var(--ease-out),
-    opacity var(--dur-base) ease;
+  transition: box-shadow var(--dur-base) var(--ease-out),
+    opacity var(--dur-base) ease,
+    transform var(--dur-base) var(--ease-out);
 }
 
 .location-section.dragging {
   opacity: 0.45;
 }
 
+/* 拖拽中的目标卡：双环咬合提示落点 */
 .location-section.drag-over {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px var(--color-primary-soft);
+  box-shadow:
+    inset 0 0 0 1px var(--color-primary),
+    0 0 0 3px color-mix(in srgb, var(--color-primary) 14%, transparent);
 }
 
 .location-section:last-child {
@@ -1068,6 +1107,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 }
 
 .location-index {
+  font-variant-numeric: tabular-nums;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1079,7 +1119,7 @@ defineExpose({ refreshPhotos: loadPhotos })
   color: var(--color-primary);
   font-family: var(--font-serif);
   font-size: var(--text-sm);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   flex-shrink: 0;
   position: relative;
   z-index: 1;
@@ -1096,7 +1136,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 .location-name {
   font-family: var(--font-serif);
   font-size: var(--text-md);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--color-ink);
 }
 
@@ -1124,7 +1164,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 
 /* ========== 展开体：照片在上，游记在下；桌面双栏 ========== */
 .location-body {
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid color-mix(in srgb, var(--color-ink) 7%, transparent);
   padding: var(--space-lg);
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
@@ -1139,7 +1179,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 
 .section-label {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   letter-spacing: 0.18em;
   color: var(--color-ink-muted);
   margin-bottom: var(--space-md);
@@ -1208,7 +1248,7 @@ defineExpose({ refreshPhotos: loadPhotos })
   height: 30px;
   border: none;
   border-radius: 999px;
-  background: rgba(12, 18, 15, 0.62);
+  background: rgba(10, 10, 9, 0.62);
   color: #fff;
   cursor: pointer;
   transition: background-color var(--dur-fast) ease;
@@ -1338,7 +1378,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 
 .export-option-name {
   font-size: var(--text-base);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--color-ink);
 }
 
@@ -1348,13 +1388,34 @@ defineExpose({ refreshPhotos: loadPhotos })
 }
 
 /* ========== 过渡 ========== */
-.expand-enter-active,
-.expand-leave-active {
-  transition: opacity var(--dur-base) var(--ease-out);
+/* 铁律 7：Grid 0fr→1fr 折叠，高度过渡交给浏览器，免 JS 测高 */
+.location-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 360ms var(--ease-out);
 }
 
-.expand-enter-from,
-.expand-leave-to {
+.location-collapse.open {
+  grid-template-rows: 1fr;
+}
+
+.location-collapse-clip {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* 铁律 9：拖拽归位走 过阻尼弹簧，零回弹咬死 */
+.locations-move {
+  transition: transform var(--dur-settle) var(--ease-settle);
+}
+
+/* 分享对勾自熄：淡出后图标复位（铁律 10） */
+.share-copied {
+  color: var(--color-primary);
+  transition: opacity var(--dur-base) ease;
+}
+
+.share-copied.is-fading {
   opacity: 0;
 }
 
@@ -1405,6 +1466,7 @@ defineExpose({ refreshPhotos: loadPhotos })
   }
 
   .location-index {
+  font-variant-numeric: tabular-nums;
     width: 30px;
     height: 30px;
     font-size: var(--text-xs);
@@ -1415,6 +1477,7 @@ defineExpose({ refreshPhotos: loadPhotos })
   }
 
   .route-count {
+  font-variant-numeric: tabular-nums;
     display: none;
   }
 

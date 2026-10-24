@@ -132,18 +132,41 @@ describe('SettingsView', () => {
     })
   })
 
-  it('copies the absolute share link', async () => {
-    const wrapper = mount(SettingsView, {
-      global: { stubs: { 'el-icon': true } },
-    })
-    await vi.waitFor(() => expect(wrapper.find('[data-testid="copy-share-share-token-1"]').exists()).toBe(true))
+  it('copies the absolute share link and self-extinguishes the check after 2.5s', async () => {
+    vi.useFakeTimers()
+    try {
+      const wrapper = mount(SettingsView, {
+        global: { stubs: { 'el-icon': true } },
+      })
+      // loadShares 的 vi.waitFor 依赖真实定时器；改用 flushPromises 轮询
+      for (let i = 0; i < 20 && !wrapper.find('[data-testid="copy-share-share-token-1"]').exists(); i++) {
+        await vi.advanceTimersByTimeAsync(10)
+        await flushPromises()
+      }
+      expect(wrapper.find('[data-testid="copy-share-share-token-1"]').exists()).toBe(true)
 
-    await wrapper.find('[data-testid="copy-share-share-token-1"]').trigger('click')
+      await wrapper.find('[data-testid="copy-share-share-token-1"]').trigger('click')
+      await flushPromises()
 
-    await vi.waitFor(() => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith('http://localhost:3000/share/share-token-1')
-      expect(ElMessage.success).toHaveBeenCalledWith('分享链接已复制')
-    })
+
+      // 复制成功：按钮内对勾 + 「已复制」，不弹 toast
+      const button = wrapper.find('[data-testid="copy-share-share-token-1"]')
+      expect(button.text()).toContain('已复制')
+      expect(button.classes()).toContain('is-copied')
+      expect(ElMessage.success).not.toHaveBeenCalled()
+
+      // 铁律 10：2.5s 后进入淡出，随后自熄恢复
+      await vi.advanceTimersByTimeAsync(2500)
+      expect(button.classes()).toContain('is-copied')
+      expect(button.find('.is-fading').exists()).toBe(true)
+
+      await vi.advanceTimersByTimeAsync(300)
+      expect(button.text()).toContain('复制链接')
+      expect(button.classes()).not.toContain('is-copied')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('rotates a share after confirmation and displays the replacement', async () => {
