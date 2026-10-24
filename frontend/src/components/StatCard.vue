@@ -103,7 +103,7 @@ watch(
   font-family: var(--font-serif);
   font-size: var(--text-xl);
   line-height: 1;
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   color: var(--color-ink);
   font-variant-numeric: tabular-nums;
 }

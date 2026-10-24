@@ -40,13 +40,13 @@ const emit = defineEmits<{
 }
 .empty-icon { font-size: 44px; margin-bottom: 16px; color: var(--color-primary); }
 .empty-icon .el-icon { display: block; }
-.empty-title { font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+.empty-title { font-family: var(--font-serif); font-size: 20px; font-weight: var(--fw-semibold); margin-bottom: 8px; }
 .empty-desc { font-size: 14px; color: var(--color-ink-muted); margin-bottom: 24px; }
 .empty-action {
   display: inline-flex; align-items: center; gap: 6px;
   min-height: 44px; padding: 10px 24px; border: none; border-radius: 999px;
   background: var(--color-primary); color: var(--color-on-primary); font-size: 14px;
-  font-weight: 600; cursor: pointer;
+  font-weight: var(--fw-semibold); cursor: pointer;
   transition: background-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
 }
 .empty-action:hover { background: var(--color-primary-hover); box-shadow: var(--shadow-primary); }

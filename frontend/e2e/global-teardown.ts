@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -7,45 +6,6 @@ const currentDir = path.dirname(fileURLToPath(import.meta.url))
 const backendDir = path.resolve(currentDir, '../../backend')
 export const e2eDataRoot = path.join(backendDir, '.e2e-data')
 const staleRunAgeMs = 60 * 60 * 1000
-const deferredCleanupScript = String.raw`
-const fs = require('node:fs')
-const path = require('node:path')
-
-const [dataDir, dataRoot] = process.argv.slice(1)
-const deadline = Date.now() + 30_000
-
-function attemptRemoval() {
-  try {
-    if (!fs.existsSync(dataDir)) process.exit(0)
-
-    const realRoot = fs.realpathSync(dataRoot)
-    const realTarget = fs.realpathSync(dataDir)
-    const relativeTarget = path.relative(realRoot, realTarget)
-    const isContained = relativeTarget !== ''
-      && !relativeTarget.startsWith('..' + path.sep)
-      && relativeTarget !== '..'
-      && !path.isAbsolute(relativeTarget)
-    const isRunDirectory = path.dirname(realTarget) === realRoot
-      && path.basename(realTarget).startsWith('run-')
-
-    if (!isContained || !isRunDirectory) process.exit(2)
-
-    fs.rmSync(realTarget, {
-      recursive: true,
-      force: true,
-      maxRetries: 20,
-      retryDelay: 100,
-    })
-    process.exit(0)
-  } catch (error) {
-    const retryable = error && (error.code === 'EBUSY' || error.code === 'EPERM')
-    if (!retryable || Date.now() >= deadline) process.exit(1)
-    setTimeout(attemptRemoval, 100)
-  }
-}
-
-attemptRemoval()
-`
 
 function isRetryableRemovalError(error: unknown): boolean {
   return error instanceof Error
@@ -107,22 +67,29 @@ export function removeE2EDataDir(dataDir: string | undefined): boolean {
   }
 }
 
-function scheduleE2EDataDirRemoval(dataDir: string): void {
-  const cleanupProcess = spawn(
-    process.execPath,
-    ['-e', deferredCleanupScript, dataDir, e2eDataRoot],
-    {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true,
-    },
-  )
-  cleanupProcess.unref()
+/** 主线程同步休眠（teardown 阶段阻塞无碍）。 */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+/**
+ * E2E 数据目录删除失败时的进程内有界重试。
+ *
+ * 不再 spawn detached 解释器做延迟清理（安全扫描按命令注入/解释器输入拦截）：
+ * 重试期过后仍被占用的目录留在 backend/.e2e-data/run-*，由下次运行
+ * cleanupStaleE2EDataDirs（>1h 陈旧清扫）统一回收。
+ */
+function removeWithBoundedRetries(dataDir: string, attempts = 5, intervalMs = 500): boolean {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (removeE2EDataDir(dataDir)) return true
+    if (attempt < attempts) sleepSync(intervalMs)
+  }
+  return false
 }
 
 export default function globalTeardown() {
   const dataDir = process.env.FOOTPRINT_E2E_DATA_DIR
   if (dataDir && !removeE2EDataDir(dataDir)) {
-    scheduleE2EDataDirRemoval(dataDir)
+    removeWithBoundedRetries(dataDir)
   }
 }

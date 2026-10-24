@@ -1,3 +1,7 @@
+const gen = (): string => crypto.randomUUID().replaceAll('-', '')
+const TEST_TOKEN = gen()
+const EXPIRED_TOKEN = 'expired-' + gen()
+
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock axios
@@ -45,9 +49,9 @@ describe('Request Module', () => {
   })
 
   it('adds auth header when token exists', () => {
-    localStorage.setItem('token', 'test-token')
+    localStorage.setItem('token', TEST_TOKEN)
     // The interceptor should add Authorization header
-    expect(localStorage.getItem('token')).toBe('test-token')
+    expect(localStorage.getItem('token')).toBe(TEST_TOKEN)
   })
 
   it('does not add auth header when no token', () => {
@@ -55,7 +59,7 @@ describe('Request Module', () => {
   })
 
   it('forces login after a 401 while preserving user-scoped drafts', async () => {
-    localStorage.setItem('token', 'expired-token')
+    localStorage.setItem('token', EXPIRED_TOKEN)
     localStorage.setItem('footprint:trip-draft:17', 'private-draft')
     const invalidated = vi.fn()
     window.addEventListener('footprint:auth-invalidated', invalidated, { once: true })

@@ -364,7 +364,7 @@ function cycleTheme() {
   background: transparent;
   font-family: var(--font-serif);
   font-size: 20px;
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   color: var(--color-ink);
   letter-spacing: 0.06em;
   cursor: pointer;
@@ -395,7 +395,7 @@ function cycleTheme() {
   padding: 0 16px;
   border-radius: 999px;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--color-ink-secondary);
   text-decoration: none;
   transition: color var(--dur-base) var(--ease-out),
@@ -414,7 +414,7 @@ function cycleTheme() {
 .nav-link.active {
   color: var(--color-primary);
   background: var(--color-primary-soft);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .nav-right {
@@ -471,7 +471,7 @@ function cycleTheme() {
 .mobile-logo {
   font-family: var(--font-serif);
   font-size: 17px;
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   color: var(--color-ink);
   letter-spacing: 0.06em;
 }
@@ -550,7 +550,7 @@ main {
 
 .tab-item.active {
   color: var(--color-primary);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .tab-item.active::before {
@@ -658,7 +658,7 @@ main {
 .search-group-title {
   padding: 14px 18px 6px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--color-ink-muted);
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -706,7 +706,7 @@ main {
 
 .search-item-name {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--color-ink);
   white-space: nowrap;
   overflow: hidden;

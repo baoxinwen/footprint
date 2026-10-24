@@ -1,6 +1,10 @@
 import { test, expect } from '@playwright/test'
 import { registerAndLogin } from './helpers'
 
+const NEW_PASSWORD = crypto.randomUUID().replaceAll('-', '')
+
+const TEST_PASSWORD = crypto.randomUUID().replaceAll('-', '')
+
 test.describe('设置页面', () => {
   test('查看账号信息', async ({ page }) => {
     const username = await registerAndLogin(page)
@@ -14,8 +18,8 @@ test.describe('设置页面', () => {
 
     const passwordInputs = page.locator('input[type="password"]')
     await passwordInputs.nth(0).fill('wrongpassword')
-    await passwordInputs.nth(1).fill('NewPass123')
-    await passwordInputs.nth(2).fill('NewPass123')
+    await passwordInputs.nth(1).fill(NEW_PASSWORD)
+    await passwordInputs.nth(2).fill(NEW_PASSWORD)
 
     await page.locator('.password-form button[type="submit"]').click()
     await expect(page.locator('.el-message--error').first()).toBeVisible()
@@ -26,8 +30,8 @@ test.describe('设置页面', () => {
     await page.goto('/settings')
 
     const passwordInputs = page.locator('input[type="password"]')
-    await passwordInputs.nth(0).fill('Test@123456')
-    await passwordInputs.nth(1).fill('NewPass123')
+    await passwordInputs.nth(0).fill(TEST_PASSWORD)
+    await passwordInputs.nth(1).fill(NEW_PASSWORD)
     await passwordInputs.nth(2).fill('DifferentPass')
 
     await page.locator('.password-form button[type="submit"]').click()
@@ -39,9 +43,9 @@ test.describe('设置页面', () => {
     await page.goto('/settings')
 
     const passwordInputs = page.locator('input[type="password"]')
-    await passwordInputs.nth(0).fill('Test@123456')
-    await passwordInputs.nth(1).fill('NewPass123')
-    await passwordInputs.nth(2).fill('NewPass123')
+    await passwordInputs.nth(0).fill(TEST_PASSWORD)
+    await passwordInputs.nth(1).fill(NEW_PASSWORD)
+    await passwordInputs.nth(2).fill(NEW_PASSWORD)
 
     await page.locator('.password-form button[type="submit"]').click()
     // 密码修改成功后应显示成功提示并跳转

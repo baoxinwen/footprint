@@ -223,7 +223,7 @@ const stopCount = computed(() => trip.value?.locations.length ?? 0)
 .brand-name {
   font-family: var(--font-serif);
   font-size: var(--text-md);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   letter-spacing: 0.08em;
   color: var(--color-ink);
 }
@@ -312,7 +312,7 @@ const stopCount = computed(() => trip.value?.locations.length ?? 0)
 
 .hero-kicker {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   letter-spacing: 0.24em;
   color: var(--color-accent);
   text-transform: uppercase;
@@ -323,7 +323,7 @@ const stopCount = computed(() => trip.value?.locations.length ?? 0)
   font-family: var(--font-serif);
   font-size: var(--text-2xl);
   line-height: var(--lh-2xl);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   color: inherit;
   text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
 }
@@ -439,7 +439,7 @@ const stopCount = computed(() => trip.value?.locations.length ?? 0)
   background: var(--color-surface);
   font-family: var(--font-serif);
   font-size: var(--text-sm);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   flex-shrink: 0;
 }
 
@@ -453,7 +453,7 @@ const stopCount = computed(() => trip.value?.locations.length ?? 0)
 .location-name {
   font-family: var(--font-serif);
   font-size: var(--text-md);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--color-ink);
 }
 

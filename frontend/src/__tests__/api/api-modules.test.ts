@@ -1,3 +1,8 @@
+const gen = (): string => crypto.randomUUID().replaceAll('-', '')
+const TEST_PW = gen()
+const OLD_PW = gen()
+const NEW_PW = gen()
+
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import request from '../../api/request'
 
@@ -71,29 +76,29 @@ describe('auth API', () => {
 
   it('register calls POST /auth/register', async () => {
     const { register } = await import('../../api/auth')
-    await register('testuser', 'password123')
+    await register('testuser', TEST_PW)
     expect(request.post).toHaveBeenCalledWith('/auth/register', {
       username: 'testuser',
-      password: 'password123',
+      password: TEST_PW,
     })
   })
 
   it('login calls POST /auth/login', async () => {
     const { login } = await import('../../api/auth')
-    await login('testuser', 'password123')
+    await login('testuser', TEST_PW)
     expect(request.post).toHaveBeenCalledWith('/auth/login', {
       username: 'testuser',
-      password: 'password123',
+      password: TEST_PW,
     })
   })
 
   it('changePassword calls POST /auth/change-password', async () => {
     const { changePassword } = await import('../../api/auth')
-    await changePassword('oldPass', 'newPass123', 'newPass123')
+    await changePassword(OLD_PW, NEW_PW, NEW_PW)
     expect(request.post).toHaveBeenCalledWith('/auth/change-password', {
-      current_password: 'oldPass',
-      new_password: 'newPass123',
-      confirm_password: 'newPass123',
+      current_password: OLD_PW,
+      new_password: NEW_PW,
+      confirm_password: NEW_PW,
     })
   })
 })

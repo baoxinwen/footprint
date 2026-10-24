@@ -189,7 +189,7 @@ const statCards = [
 
 .page-kicker {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   letter-spacing: 0.22em;
   color: var(--color-accent);
   margin-bottom: var(--space-sm);
@@ -198,7 +198,7 @@ const statCards = [
 .page-title {
   font-size: var(--text-2xl);
   line-height: var(--lh-2xl);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .page-desc {
@@ -289,7 +289,7 @@ const statCards = [
 .section-title {
   font-size: var(--text-lg);
   line-height: var(--lh-lg);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .section-desc {
@@ -334,7 +334,7 @@ const statCards = [
 .bar-label {
   font-family: var(--font-serif);
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--color-ink);
   font-variant-numeric: tabular-nums;
 }

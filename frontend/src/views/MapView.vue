@@ -271,12 +271,12 @@ function renderCityMarkers() {
     const size = Math.max(34, Math.min(city.city.length * 14 + 18, 80))
     const scale = Math.min(1 + (city.count - 1) * 0.09, 1.32)
     const badge = city.count > 1
-      ? `<span style="position:absolute;top:-8px;right:-8px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:var(--color-accent);color:var(--color-on-accent);font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.25);">${city.count}</span>`
+      ? `<span style="position:absolute;top:-8px;right:-8px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:var(--color-accent);color:var(--color-on-accent);font-size:11px;font-weight: var(--fw-bold);display:inline-flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.25);">${city.count}</span>`
       : ''
     const marker = new AMapRef.Marker({
       position: [city.longitude, city.latitude],
       title: `${city.city} (${city.count}次)`,
-      content: `<div style="position:relative;transform:scale(${scale});background:var(--color-primary);color:var(--color-on-primary);border:2px solid rgba(255,255,255,0.92);border-radius:10px;padding:0 12px;height:${size}px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(12,18,15,0.3);white-space:nowrap;">${escapeHtml(city.city)}${badge}</div>`,
+      content: `<div style="position:relative;transform:scale(${scale});background:var(--color-primary);color:var(--color-on-primary);border:2px solid rgba(255,255,255,0.92);border-radius:10px;padding:0 12px;height:${size}px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight: var(--fw-bold);cursor:pointer;box-shadow:0 4px 14px rgba(10,10,9,0.3);white-space:nowrap;">${escapeHtml(city.city)}${badge}</div>`,
       offset: new AMapRef.Pixel(0, -size / 2),
     })
 
@@ -619,7 +619,7 @@ onUnmounted(() => {
   justify-content: space-between;
   font-family: var(--font-sans);
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--color-ink);
   background: transparent;
   text-align: left;
@@ -653,7 +653,7 @@ onUnmounted(() => {
 .stat-value {
   font-family: var(--font-serif);
   font-size: 22px;
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   line-height: 1.2;
   color: var(--color-primary);
   font-variant-numeric: tabular-nums;
@@ -679,7 +679,7 @@ onUnmounted(() => {
 
 .section-label {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--color-ink-muted);
   letter-spacing: 0.1em;
   margin-bottom: 8px;
@@ -716,7 +716,7 @@ onUnmounted(() => {
   background: var(--color-primary);
   border-color: var(--color-primary);
   color: var(--color-on-primary);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 
 /* 照片模式 */
@@ -733,7 +733,7 @@ onUnmounted(() => {
   background: var(--color-surface);
   font-family: var(--font-sans);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--color-ink-secondary);
   cursor: pointer;
   transition: border-color var(--dur-fast) ease, background-color var(--dur-fast) ease, color var(--dur-fast) ease;

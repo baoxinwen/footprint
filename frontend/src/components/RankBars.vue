@@ -90,7 +90,7 @@ function rankClass(index: number) {
   border-radius: 999px;
   font-family: var(--font-serif);
   font-size: var(--text-sm);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   background: var(--color-surface-muted);
   color: var(--color-ink-secondary);
   flex-shrink: 0;
@@ -121,7 +121,7 @@ function rankClass(index: number) {
 
 .rank-city {
   font-size: var(--text-base);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--color-ink);
 }
 

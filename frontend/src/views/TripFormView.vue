@@ -669,7 +669,7 @@ async function handleSave() {
 
 .form-kicker {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   letter-spacing: 0.22em;
   color: var(--color-accent);
   margin-bottom: var(--space-sm);
@@ -678,7 +678,7 @@ async function handleSave() {
 .form-title {
   font-size: var(--text-2xl);
   line-height: var(--lh-2xl);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .form-desc {
@@ -749,13 +749,13 @@ async function handleSave() {
   color: var(--color-primary);
   font-family: var(--font-serif);
   font-size: var(--text-sm);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .section-title {
   font-size: var(--text-lg);
   line-height: var(--lh-lg);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .trip-form {
@@ -804,7 +804,7 @@ async function handleSave() {
 
 .poi-name {
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--color-ink);
 }
 
@@ -831,7 +831,7 @@ async function handleSave() {
 .empty-title {
   font-family: var(--font-serif);
   font-size: var(--text-md);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--color-ink);
 }
 
@@ -866,7 +866,7 @@ async function handleSave() {
   color: var(--color-primary);
   font-family: var(--font-serif);
   font-size: var(--text-sm);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   flex-shrink: 0;
 }
 
@@ -878,7 +878,7 @@ async function handleSave() {
 .location-name {
   font-family: var(--font-serif);
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--color-ink);
 }
 
@@ -938,7 +938,7 @@ async function handleSave() {
 .editor-title {
   font-family: var(--font-serif);
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--color-ink);
 }
 

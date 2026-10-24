@@ -157,7 +157,7 @@ function goToDetail(id: number) {
 
 .page-kicker {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   letter-spacing: 0.22em;
   color: var(--color-accent);
   margin-bottom: var(--space-sm);
@@ -166,7 +166,7 @@ function goToDetail(id: number) {
 .page-title {
   font-size: var(--text-2xl);
   line-height: var(--lh-2xl);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .page-desc {
@@ -233,7 +233,7 @@ function goToDetail(id: number) {
   font-family: var(--font-serif);
   font-size: var(--text-2xl);
   line-height: var(--lh-2xl);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   color: var(--color-ink);
 }
 
@@ -296,7 +296,7 @@ function goToDetail(id: number) {
 
 .group-label {
   font-size: var(--text-md);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .group-count {
@@ -369,11 +369,12 @@ function goToDetail(id: number) {
 .trip-title {
   font-family: var(--font-serif);
   font-size: var(--text-md);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--color-ink);
 }
 
 .trip-date {
+  font-variant-numeric: tabular-nums;
   font-size: var(--text-xs);
   color: var(--color-ink-muted);
   white-space: nowrap;

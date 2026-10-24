@@ -1,3 +1,8 @@
+const gen = (): string => crypto.randomUUID().replaceAll('-', '')
+const TEST_PW = gen()
+const TEST_TOKEN = gen()
+const EXPIRED_TOKEN = 'expired-' + gen()
+
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
@@ -32,10 +37,10 @@ describe('Auth Store', () => {
 
   describe('login', () => {
     it('stores token on successful login', async () => {
-      vi.mocked(loginApi).mockResolvedValue({ data: { access_token: 'test-token-123' } } as any)
+      vi.mocked(loginApi).mockResolvedValue({ data: { access_token: TEST_TOKEN } } as any)
       const store = useAuthStore()
-      await store.login('testuser', 'password123')
-      expect(store.token).toBe('test-token-123')
+      await store.login('testuser', TEST_PW)
+      expect(store.token).toBe(TEST_TOKEN)
       expect(store.isLoggedIn).toBe(true)
     })
 
@@ -50,8 +55,8 @@ describe('Auth Store', () => {
     it('calls registerApi with credentials', async () => {
       vi.mocked(registerApi).mockResolvedValue({} as any)
       const store = useAuthStore()
-      await store.register('newuser', 'password123')
-      expect(registerApi).toHaveBeenCalledWith('newuser', 'password123')
+      await store.register('newuser', TEST_PW)
+      expect(registerApi).toHaveBeenCalledWith('newuser', TEST_PW)
     })
 
     it('throws on duplicate username', async () => {
@@ -97,7 +102,7 @@ describe('Auth Store', () => {
 
     it('synchronizes store state when another layer invalidates authentication', () => {
       const store = useAuthStore()
-      store.token = 'expired-token'
+      store.token = EXPIRED_TOKEN
       store.isLoggedIn = true
 
       window.dispatchEvent(new Event('footprint:auth-invalidated'))

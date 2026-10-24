@@ -372,7 +372,7 @@ function durationLabel(start: string, end: string) {
 
 .page-kicker {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   letter-spacing: 0.22em;
   color: var(--color-accent);
   margin-bottom: var(--space-sm);
@@ -387,7 +387,7 @@ function durationLabel(start: string, end: string) {
 .page-title {
   font-size: var(--text-2xl);
   line-height: var(--lh-2xl);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .trip-count {
@@ -407,7 +407,7 @@ function durationLabel(start: string, end: string) {
   background: var(--color-primary);
   color: var(--color-on-primary);
   font-size: var(--text-base);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   cursor: pointer;
   flex-shrink: 0;
   transition: background-color var(--dur-base) var(--ease-out),
@@ -508,7 +508,7 @@ function durationLabel(start: string, end: string) {
   background: var(--color-surface);
   color: var(--color-ink-secondary);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   cursor: pointer;
   transition: color var(--dur-fast) ease, background-color var(--dur-fast) ease,
     border-color var(--dur-fast) ease;
@@ -532,7 +532,7 @@ function durationLabel(start: string, end: string) {
   background: var(--color-primary);
   color: var(--color-on-primary);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .sort-group {
@@ -594,7 +594,7 @@ function durationLabel(start: string, end: string) {
 
 .filter-label {
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--color-ink-muted);
   letter-spacing: 0.08em;
 }
@@ -669,7 +669,7 @@ function durationLabel(start: string, end: string) {
   background: var(--color-primary-soft);
   color: var(--color-primary);
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 
 .filter-tag button {
@@ -768,11 +768,11 @@ function durationLabel(start: string, end: string) {
   z-index: 1;
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(12, 18, 15, 0.55);
+  background: rgba(10, 10, 9, 0.55);
   backdrop-filter: blur(6px);
   color: #fff;
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   letter-spacing: 0.06em;
 }
 
@@ -793,7 +793,7 @@ function durationLabel(start: string, end: string) {
 .card-title {
   font-size: var(--text-lg);
   line-height: var(--lh-lg);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .card-description {

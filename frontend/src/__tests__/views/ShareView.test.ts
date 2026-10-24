@@ -1,3 +1,5 @@
+const SHARE_TOKEN = crypto.randomUUID().replaceAll('-', '')
+
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -6,7 +8,7 @@ import { createPinia, setActivePinia } from 'pinia'
 const mockPush = vi.fn()
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: mockPush, replace: mockPush }),
-  useRoute: () => ({ params: { token: 'test-token-123' } }),
+  useRoute: () => ({ params: { token: SHARE_TOKEN } }),
   createRouter: vi.fn(() => ({ beforeEach: vi.fn() })),
   createWebHistory: vi.fn(),
 }))
@@ -67,7 +69,7 @@ describe('ShareView', () => {
     })
 
     await vi.waitFor(() => {
-      expect(viewShare).toHaveBeenCalledWith('test-token-123')
+      expect(viewShare).toHaveBeenCalledWith(SHARE_TOKEN)
     })
   })
 
@@ -77,8 +79,8 @@ describe('ShareView', () => {
       data: [{
         id: 7,
         location_id: 1,
-        original_url: '/api/shares/view/test-token-123/photos/7/original',
-        thumbnail_url: '/api/shares/view/test-token-123/photos/7/thumbnail',
+        original_url: `/api/shares/view/${SHARE_TOKEN}/photos/7/original`,
+        thumbnail_url: `/api/shares/view/${SHARE_TOKEN}/photos/7/thumbnail`,
         file_name: '故宫.jpg',
         file_size: 1024,
         created_at: '2025-10-01T10:00:00',
@@ -98,8 +100,8 @@ describe('ShareView', () => {
     await wrapper.find('.location-header').trigger('click')
 
     await vi.waitFor(() => {
-      expect(getSharedPhotos).toHaveBeenCalledWith('test-token-123', 1)
-      expect(wrapper.find('.photo-item img').attributes('src')).toContain('/api/shares/view/test-token-123/')
+      expect(getSharedPhotos).toHaveBeenCalledWith(SHARE_TOKEN, 1)
+      expect(wrapper.find('.photo-item img').attributes('src')).toContain(`/api/shares/view/${SHARE_TOKEN}/`)
     })
   })
 
@@ -109,8 +111,8 @@ describe('ShareView', () => {
       data: [{
         id: 7,
         location_id: 1,
-        original_url: '/api/shares/view/test-token-123/photos/7/original',
-        thumbnail_url: '/api/shares/view/test-token-123/photos/7/thumbnail',
+        original_url: `/api/shares/view/${SHARE_TOKEN}/photos/7/original`,
+        thumbnail_url: `/api/shares/view/${SHARE_TOKEN}/photos/7/thumbnail`,
         file_name: '故宫午后.jpg',
         file_size: 1024,
         created_at: '2025-10-01T10:00:00',

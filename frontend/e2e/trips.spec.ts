@@ -1,18 +1,20 @@
 import { test, expect } from '@playwright/test'
 
+const TEST_PASSWORD = crypto.randomUUID().replaceAll('-', '')
+
 async function registerAndLogin(page: any): Promise<string> {
   const username = `e2euser_${Date.now()}`
   await page.goto('/login')
   await page.locator('.tab-btn', { hasText: '注册' }).click()
   await page.fill('input[placeholder*="3-50个字符"]', username)
-  await page.fill('input[placeholder="至少6位"]', 'Test@123456')
-  await page.fill('input[placeholder="再次输入密码"]', 'Test@123456')
+  await page.fill('input[placeholder="至少6位"]', TEST_PASSWORD)
+  await page.fill('input[placeholder="再次输入密码"]', TEST_PASSWORD)
   await page.locator('.submit-btn').click()
   await expect(page.locator('.el-message')).toContainText('注册成功')
 
   await page.locator('.tab-btn', { hasText: '登录' }).click()
   await page.fill('input[placeholder="请输入用户名"]', username)
-  await page.fill('input[placeholder="请输入密码"]', 'Test@123456')
+  await page.fill('input[placeholder="请输入密码"]', TEST_PASSWORD)
   await page.locator('.submit-btn').click()
   await expect(page).toHaveURL('/')
   return username

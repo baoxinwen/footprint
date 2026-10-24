@@ -122,7 +122,7 @@ const geometry = computed(() => {
 
 .value-label {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   fill: var(--color-ink-secondary);
   font-variant-numeric: tabular-nums;
 }

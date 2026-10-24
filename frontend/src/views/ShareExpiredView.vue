@@ -66,7 +66,7 @@ const router = useRouter()
   margin-bottom: var(--space-sm);
   color: var(--color-danger);
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   letter-spacing: 0.18em;
 }
 
@@ -94,7 +94,7 @@ const router = useRouter()
   background: var(--color-primary);
   color: var(--color-on-primary);
   font-size: var(--text-base);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   cursor: pointer;
   transition: background-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
 }

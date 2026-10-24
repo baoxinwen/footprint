@@ -141,7 +141,7 @@ function openViewer(index: number) {
   justify-content: center;
   border: none;
   border-radius: 999px;
-  background: rgba(12, 18, 15, 0.62);
+  background: rgba(10, 10, 9, 0.62);
   color: #fff;
   opacity: 0;
   cursor: pointer;

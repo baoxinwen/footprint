@@ -1,12 +1,15 @@
 import { expect, Page } from '@playwright/test'
 
+// 运行时生成的注册口令：仓库不留字面量口令（安全扫描按硬编码凭据拦截）
+const TEST_PASSWORD = crypto.randomUUID().replaceAll('-', '')
+
 export async function registerAndLogin(page: Page): Promise<string> {
   const username = `e2e_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
   await page.goto('/login')
   await page.locator('.tab-btn', { hasText: '注册' }).click()
   await page.fill('input[placeholder*="3-50个字符"]', username)
-  await page.fill('input[placeholder="至少6位"]', 'Test@123456')
-  await page.fill('input[placeholder="再次输入密码"]', 'Test@123456')
+  await page.fill('input[placeholder="至少6位"]', TEST_PASSWORD)
+  await page.fill('input[placeholder="再次输入密码"]', TEST_PASSWORD)
   const registerResponsePromise = page.waitForResponse(
     (response) => response.url().endsWith('/api/auth/register') && response.request().method() === 'POST',
   )
@@ -17,7 +20,7 @@ export async function registerAndLogin(page: Page): Promise<string> {
 
   await page.locator('.tab-btn', { hasText: '登录' }).click()
   await page.fill('input[placeholder="请输入用户名"]', username)
-  await page.fill('input[placeholder="请输入密码"]', 'Test@123456')
+  await page.fill('input[placeholder="请输入密码"]', TEST_PASSWORD)
   const loginResponsePromise = page.waitForResponse(
     (response) => response.url().endsWith('/api/auth/login') && response.request().method() === 'POST',
   )

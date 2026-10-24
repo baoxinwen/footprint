@@ -77,7 +77,7 @@ const props = withDefaults(
   position: relative;
   font-family: var(--font-serif);
   font-size: 44px;
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   color: var(--color-on-primary);
   opacity: 0.92;
   line-height: 1;
