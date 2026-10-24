@@ -5,15 +5,18 @@
    ============================================================ */
 
 :root {
-  /* ---- 色彩 · 浅色（暖纸白） ---- */
-  --color-canvas: #faf8f4;          /* 页面底：暖纸白 */
-  --color-surface: #ffffff;         /* 卡片面 */
-  --color-surface-muted: #f3efe7;   /* 次级面：更深的纸色 */
-  --color-ink: #1c2420;             /* 主文字 */
-  --color-ink-secondary: #55605a;   /* 次级文字 */
-  --color-ink-muted: #8a938c;       /* 弱文字 */
-  --color-border: #e6e1d6;          /* 暖色发丝线 */
-  --color-border-strong: #cfc8b8;
+  /* ---- 色彩 · 浅色（中性暖灰，微明度分层） ----
+     铁律 1：层与层只靠 1%-3% 明度差区分，禁纯黑，面上不画边框 */
+  --color-canvas: #f5f5f3;          /* 页面底 */
+  --color-surface: #fcfcfb;         /* 卡片面（+3% 明度） */
+  --color-surface-muted: #efefec;   /* 次级面（-3% 明度） */
+  --color-surface-raised: #fcfcfb;  /* 浮层：弹窗/下拉，与卡面同层、靠阴影浮起 */
+  --color-field: #f2f2ef;           /* 输入字段面（介于 canvas 与 muted） */
+  --color-ink: #1e1e1c;             /* 主文字（禁纯黑） */
+  --color-ink-secondary: #60605b;   /* 次级文字 */
+  --color-ink-muted: #8f8f89;       /* 弱文字 */
+  --color-border: #e9e9e5;          /* 结构分隔线（仅语义分隔，不再用于面包边） */
+  --color-border-strong: #d8d8d2;
   --color-primary: #1f5c46;         /* 墨绿 */
   --color-primary-hover: #174735;
   --color-primary-soft: #e7efe9;
@@ -32,6 +35,12 @@
   --font-serif: 'Noto Serif SC', 'Songti SC', 'SimSun', Georgia, serif;
   --font-sans: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei',
     -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* ---- 字重（铁律 3：暗色整体 -40，防白字发胖；依赖可变字体） ---- */
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
 
   /* ---- 字号阶梯（8 档，行高成对） ---- */
   --text-xs: 12px;   --lh-xs: 1.5;
@@ -64,11 +73,21 @@
   --shadow-elevated: 0 20px 56px rgba(28, 36, 32, 0.16);
   --shadow-primary: 0 8px 20px rgba(31, 92, 70, 0.18);
 
-  /* ---- 动效 ---- */
+  /* ---- 动效性格（铁律 9）----
+     settle：过阻尼，拖拽归位零回弹、咬死；
+     pop：欠阻尼，对勾/成功态微弹一下；
+     typing：流式打字的匀加速清晰化 */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-settle: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-typing: cubic-bezier(0.215, 0.61, 0.355, 1);
   --dur-fast: 120ms;
   --dur-base: 180ms;
   --dur-slow: 240ms;
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-settle: 480ms;   /* 过阻尼弹簧 1200/80 的等效落定时长 */
+  --dur-pop: 320ms;      /* 欠阻尼弹簧 380/18 的等效弹跳时长 */
+  --dur-type-char: 90ms; /* 单字清晰化时长 */
+  --dur-type-stagger: 30ms; /* 相邻字错开 */
 
   /* ---- Element Plus 主题桥 ---- */
   --el-color-primary: var(--color-primary);
@@ -97,24 +116,33 @@
   --el-text-color-secondary: var(--color-ink-muted);
   --el-fill-color-blank: var(--color-surface);
   --el-bg-color: var(--color-surface);
-  --el-bg-color-overlay: var(--color-surface);
+  --el-bg-color-overlay: var(--color-surface-raised);
   --el-font-family: var(--font-sans);
   --el-box-shadow-light: var(--shadow-card);
+  /* 铁律 1/2：输入去边框，字段面靠明度分层，焦点交给双环 box-shadow */
+  --el-input-border-color: transparent;
+  --el-input-hover-border-color: transparent;
+  --el-input-focus-border-color: transparent;
+  --el-input-bg-color: var(--color-field);
 }
 
 /* ============================================================
-   深色模式 · 墨绿深夜影集
+   深色模式 · 中性暗阶（铁律 1/3）
+   层阶 #0b0b0a → #151515 → #1a1a19 → #20201e，全部 1%-3% 微明度差；
+   字重整体 -40，抵消白字在暗底上的视觉发胖。
    ============================================================ */
 html.dark {
   color-scheme: dark;
-  --color-canvas: #0c120f;
-  --color-surface: #131b17;
-  --color-surface-muted: #1a2520;
-  --color-ink: #ecf2ee;
-  --color-ink-secondary: #b5c2ba;
-  --color-ink-muted: #7f8d85;
-  --color-border: #263530;
-  --color-border-strong: #3a4c44;
+  --color-canvas: #0b0b0a;
+  --color-surface: #151515;
+  --color-surface-muted: #1a1a19;
+  --color-surface-raised: #20201e;
+  --color-field: #1a1a19;
+  --color-ink: #f1f1ef;
+  --color-ink-secondary: #b4b4af;
+  --color-ink-muted: #7d7d76;
+  --color-border: #262624;
+  --color-border-strong: #3c3c38;
   --color-primary: #7cc4a1;
   --color-primary-hover: #9ad4b8;
   --color-primary-soft: #1d3a2d;
@@ -128,6 +156,11 @@ html.dark {
   --color-danger-soft: #3c241d;
   --color-route: #d4a94e;
   --color-route-soft: #332a18;
+  /* 铁律 3：暗色字重全降 40 */
+  --fw-regular: 360;
+  --fw-medium: 460;
+  --fw-semibold: 560;
+  --fw-bold: 660;
   --el-fill-color-blank: var(--color-surface);
   --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.35);
@@ -169,9 +202,28 @@ body,
 
 h1, h2, h3, h4 {
   font-family: var(--font-serif);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--color-ink);
   letter-spacing: 0.01em;
+}
+
+/* 铁律 8：正文防孤字；铁律 3：加粗走字重令牌（暗色自动降档） */
+p, li {
+  text-wrap: pretty;
+}
+
+b, strong {
+  font-weight: var(--fw-semibold);
+}
+
+/* 铁律 5：行内图标视觉对齐中心（flex 布局中的图标不受影响） */
+.el-icon {
+  vertical-align: -0.125em;
+}
+
+/* 铁律 6：数字锁等宽，跳动零抖动 */
+.tnums {
+  font-variant-numeric: tabular-nums;
 }
 
 button, a, input, select, textarea {
@@ -184,23 +236,36 @@ button, a, input, select, textarea {
   outline-offset: 2px;
 }
 
+/* 铁律 2：输入类聚焦不加 outline，咬合感交给双环 box-shadow */
+.el-input__wrapper:focus-visible,
+.el-select__wrapper:focus-visible,
+.el-textarea__inner:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
 /* ============================================================
    Element Plus 全局微调
    ============================================================ */
+/* 铁律 1：卡片去边框，面与面靠微明度差 + 柔和阴影分层 */
 .el-card {
-  border: 1px solid var(--color-border);
+  border: none;
   border-radius: var(--radius-md);
+  background-color: var(--color-surface);
   box-shadow: var(--shadow-soft);
 }
 
 .el-card__header {
   font-family: var(--font-serif);
-  font-weight: 600;
-  border-bottom: 1px solid var(--color-border);
+  font-weight: var(--fw-semibold);
+  border-bottom: none;
 }
 
 .el-button {
   min-height: 40px;
+  font-weight: var(--fw-medium);
   border-radius: var(--radius-sm);
   transition: background-color var(--dur-base) var(--ease-out),
     border-color var(--dur-base) var(--ease-out),
@@ -208,19 +273,43 @@ button, a, input, select, textarea {
     transform var(--dur-fast) var(--ease-out);
 }
 
-.el-button--primary {
-  font-weight: 500;
-}
-
 .el-button--primary:not(.is-disabled):hover {
   box-shadow: var(--shadow-primary);
 }
 
+/* ---- 铁律 1/2：输入去边框，字段面微暗一层；
+     聚焦双环：内环实线咬住内容 + 外环柔光加深，无 outline ---- */
 .el-input__wrapper,
 .el-select__wrapper,
-.el-date-editor.el-input__wrapper {
-  min-height: 40px;
+.el-textarea__inner {
+  background-color: var(--color-field);
+  box-shadow: inset 0 0 0 1px transparent;
+  transition: box-shadow var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out);
   border-radius: var(--radius-sm);
+}
+
+.el-input__wrapper,
+.el-select__wrapper {
+  min-height: 40px;
+}
+
+.el-input__wrapper:hover,
+.el-select__wrapper:hover {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-ink) 10%, transparent);
+}
+
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused,
+.el-textarea__inner:focus {
+  background-color: var(--color-surface);
+  box-shadow:
+    inset 0 0 0 1px var(--color-primary),
+    0 0 0 3px color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+
+.el-textarea__inner {
+  border: none;
 }
 
 .el-dialog {
@@ -345,7 +434,6 @@ button, a, input, select, textarea {
 
 .markdown-body pre {
   background: var(--color-surface-muted);
-  border: 1px solid var(--color-border);
   color: var(--color-ink);
   padding: 16px;
   border-radius: var(--radius-sm);
@@ -411,6 +499,49 @@ button, a, input, select, textarea {
 }
 
 /* ============================================================
+   流式打字（铁律 4）
+   单字 90ms 从 blur(6px) 到清晰，相邻字错开 30ms 晕开；
+   字符由 TypewriterText 组件拆分，容器带 aria-label 保读屏。
+   ============================================================ */
+@keyframes twCharIn {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+.tw-char {
+  display: inline-block;
+  white-space: pre;
+  animation: twCharIn var(--dur-type-char) var(--ease-typing) both;
+  will-change: filter, opacity;
+}
+
+/* ============================================================
+   成功态对勾（铁律 9/10）
+   欠阻尼微弹入场；复制反馈 2.5s 后自熄恢复。
+   ============================================================ */
+@keyframes checkPop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.pop-check {
+  display: inline-flex;
+  animation: checkPop var(--dur-pop) var(--ease-pop) both;
+}
+
+/* ============================================================
    动效降级
    ============================================================ */
 @media (prefers-reduced-motion: reduce) {
@@ -421,5 +552,10 @@ button, a, input, select, textarea {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  /* 铁律 4：减少动态时打字直接呈现，不做逐字晕开 */
+  .tw-char {
+    animation: none;
   }
 }
