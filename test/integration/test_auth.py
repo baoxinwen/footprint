@@ -3,6 +3,8 @@
 关联用例: TC-AUTH-001 ~ TC-AUTH-011, TC-SEC-001, TC-SEC-002
 """
 import pytest
+
+from ..password_fixtures import PW_A, PW_B, PW_C, PW_WRONG
 import bcrypt
 
 from app.models.user import User
@@ -46,8 +48,8 @@ class TestPasswordByteLimit:
             "/api/auth/change-password",
             json={
                 "current_password": password,
-                "new_password": "MigratedPassword123",
-                "confirm_password": "MigratedPassword123",
+                "new_password": PW_B,
+                "confirm_password": PW_B,
             },
             headers=headers,
         )
@@ -58,9 +60,9 @@ class TestPasswordByteLimit:
         self, client, auth_headers, field
     ):
         payload = {
-            "current_password": "Test@123456",
-            "new_password": "NewPassword123",
-            "confirm_password": "NewPassword123",
+            "current_password": PW_A,
+            "new_password": PW_B,
+            "confirm_password": PW_B,
         }
         payload[field] = "密" * 25
         resp = client.post(
@@ -79,9 +81,9 @@ def test_change_password_invalidates_old_token_and_new_login_works(
     resp = client.post(
         "/api/auth/change-password",
         json={
-            "current_password": "Test@123456",
-            "new_password": "NewPassword123",
-            "confirm_password": "NewPassword123",
+            "current_password": PW_A,
+            "new_password": PW_B,
+            "confirm_password": PW_B,
         },
         headers=auth_headers,
     )
@@ -91,7 +93,7 @@ def test_change_password_invalidates_old_token_and_new_login_works(
 
     login_resp = client.post(
         "/api/auth/login",
-        json={"username": "testuser", "password": "NewPassword123"},
+        json={"username": "testuser", "password": PW_B},
     )
     assert login_resp.status_code == 200
     new_headers = {"Authorization": f"Bearer {login_resp.json()['access_token']}"}
@@ -104,25 +106,25 @@ class TestRegister:
 
     def test_register_success(self, client):
         """TC-AUTH-001: 正常注册。"""
-        resp = client.post("/api/auth/register", json={"username": "newuser", "password": "123456"})
+        resp = client.post("/api/auth/register", json={"username": "newuser", "password": PW_A})
         assert resp.status_code == 200
         assert resp.json()["message"] == "注册成功"
 
     def test_register_duplicate_username(self, client):
         """TC-AUTH-002: 重复用户名。"""
-        client.post("/api/auth/register", json={"username": "dupuser", "password": "123456"})
-        resp = client.post("/api/auth/register", json={"username": "dupuser", "password": "654321"})
+        client.post("/api/auth/register", json={"username": "dupuser", "password": PW_A})
+        resp = client.post("/api/auth/register", json={"username": "dupuser", "password": PW_B})
         assert resp.status_code == 400
         assert "已被占用" in resp.json()["detail"]
 
     def test_register_short_username(self, client):
         """TC-AUTH-003: 用户名过短。"""
-        resp = client.post("/api/auth/register", json={"username": "ab", "password": "123456"})
+        resp = client.post("/api/auth/register", json={"username": "ab", "password": PW_A})
         assert resp.status_code == 422
 
     def test_register_short_password(self, client):
         """TC-AUTH-004: 密码过短。"""
-        resp = client.post("/api/auth/register", json={"username": "testuser", "password": "12345"})
+        resp = client.post("/api/auth/register", json={"username": "testuser", "password": PW_A[:5]})
         assert resp.status_code == 422
 
 
@@ -132,40 +134,40 @@ class TestLogin:
 
     def test_login_success(self, client):
         """TC-AUTH-005: 正常登录。"""
-        client.post("/api/auth/register", json={"username": "logintest", "password": "123456"})
-        resp = client.post("/api/auth/login", json={"username": "logintest", "password": "123456"})
+        client.post("/api/auth/register", json={"username": "logintest", "password": PW_A})
+        resp = client.post("/api/auth/login", json={"username": "logintest", "password": PW_A})
         assert resp.status_code == 200
         assert "access_token" in resp.json()
 
     def test_login_wrong_password(self, client):
         """TC-AUTH-006: 密码错误。"""
-        client.post("/api/auth/register", json={"username": "logintest2", "password": "123456"})
-        resp = client.post("/api/auth/login", json={"username": "logintest2", "password": "wrong"})
+        client.post("/api/auth/register", json={"username": "logintest2", "password": PW_A})
+        resp = client.post("/api/auth/login", json={"username": "logintest2", "password": PW_WRONG})
         assert resp.status_code == 400
         assert "用户名或密码错误" in resp.json()["detail"]
 
     def test_login_nonexistent_user(self, client):
         """TC-AUTH-007: 用户不存在。"""
-        resp = client.post("/api/auth/login", json={"username": "ghost", "password": "123456"})
+        resp = client.post("/api/auth/login", json={"username": "ghost", "password": PW_A})
         assert resp.status_code == 400
 
     def test_login_rate_limit(self, client):
         """TC-AUTH-008: 连续失败后锁定。"""
-        client.post("/api/auth/register", json={"username": "ratetest", "password": "123456"})
+        client.post("/api/auth/register", json={"username": "ratetest", "password": PW_A})
         for _ in range(5):
-            client.post("/api/auth/login", json={"username": "ratetest", "password": "wrong"})
-        resp = client.post("/api/auth/login", json={"username": "ratetest", "password": "123456"})
+            client.post("/api/auth/login", json={"username": "ratetest", "password": PW_WRONG})
+        resp = client.post("/api/auth/login", json={"username": "ratetest", "password": PW_A})
         assert resp.status_code == 429
 
     def test_register_rate_limit_wiring(self, client):
         """同一 IP 第 4 次注册应 429——验证 API 层真实调用了注册限流。"""
         for i in range(3):
             resp = client.post(
-                "/api/auth/register", json={"username": f"regwire{i}", "password": "123456"}
+                "/api/auth/register", json={"username": f"regwire{i}", "password": PW_A}
             )
             assert resp.status_code == 200, f"第 {i + 1} 次注册应成功"
 
-        fourth = client.post("/api/auth/register", json={"username": "regwire4", "password": "123456"})
+        fourth = client.post("/api/auth/register", json={"username": "regwire4", "password": PW_A})
         assert fourth.status_code == 429
         assert "频率" in fourth.json()["detail"]
 
@@ -178,7 +180,7 @@ class TestChangePassword:
         """TC-AUTH-009: 正常修改密码。"""
         resp = client.post(
             "/api/auth/change-password",
-            json={"current_password": "Test@123456", "new_password": "654321", "confirm_password": "654321"},
+            json={"current_password": PW_A, "new_password": PW_B, "confirm_password": PW_B},
             headers=auth_headers,
         )
         assert resp.status_code == 200
@@ -187,7 +189,7 @@ class TestChangePassword:
         """TC-AUTH-010: 当前密码错误。"""
         resp = client.post(
             "/api/auth/change-password",
-            json={"current_password": "wrong", "new_password": "654321", "confirm_password": "654321"},
+            json={"current_password": PW_WRONG, "new_password": PW_B, "confirm_password": PW_B},
             headers=auth_headers,
         )
         assert resp.status_code == 400
@@ -197,7 +199,7 @@ class TestChangePassword:
         """TC-AUTH-011: 新密码不一致。"""
         resp = client.post(
             "/api/auth/change-password",
-            json={"current_password": "Test@123456", "new_password": "111111", "confirm_password": "222222"},
+            json={"current_password": PW_A, "new_password": PW_B, "confirm_password": PW_C},
             headers=auth_headers,
         )
         assert resp.status_code == 400
@@ -207,21 +209,21 @@ class TestChangePassword:
         """改密成功后的冷却期内再次修改应 429——验证 API 层真实调用了冷却检查。"""
         first = client.post(
             "/api/auth/change-password",
-            json={"current_password": "Test@123456", "new_password": "654321", "confirm_password": "654321"},
+            json={"current_password": PW_A, "new_password": PW_B, "confirm_password": PW_B},
             headers=auth_headers,
         )
         assert first.status_code == 200
 
         # 改密成功后旧 token 立即失效（auth_version 机制），重新登录获取新 token
         login_resp = client.post(
-            "/api/auth/login", json={"username": "testuser", "password": "654321"}
+            "/api/auth/login", json={"username": "testuser", "password": PW_B}
         )
         assert login_resp.status_code == 200
         fresh_headers = {"Authorization": f"Bearer {login_resp.json()['access_token']}"}
 
         second = client.post(
             "/api/auth/change-password",
-            json={"current_password": "654321", "new_password": "777777", "confirm_password": "777777"},
+            json={"current_password": PW_B, "new_password": PW_C, "confirm_password": PW_C},
             headers=fresh_headers,
         )
         assert second.status_code == 429
@@ -263,7 +265,7 @@ class TestRegisterRaceAndLoginTiming:
             )
 
         monkeypatch.setattr(Session, "commit", commit_with_unique_violation)
-        resp = client.post("/api/auth/register", json={"username": "raceuser", "password": "123456"})
+        resp = client.post("/api/auth/register", json={"username": "raceuser", "password": PW_A})
         assert resp.status_code == 400
         assert "已被占用" in resp.json()["detail"]
 
@@ -280,7 +282,7 @@ class TestRegisterRaceAndLoginTiming:
 
         monkeypatch.setattr("app.api.auth.verify_password", spy)
         resp = client.post(
-            "/api/auth/login", json={"username": "ghost-user-no-exist", "password": "whatever123"}
+            "/api/auth/login", json={"username": "ghost-user-no-exist", "password": PW_WRONG}
         )
         assert resp.status_code == 400
         assert len(calls) == 1, "用户不存在时跳过了密码校验，存在计时侧信道"

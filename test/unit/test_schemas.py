@@ -3,6 +3,8 @@
 关联用例: TC-TRIP-002, TC-TRIP-003, TC-AUTH-003, TC-AUTH-004
 """
 import pytest
+
+from ..password_fixtures import PW_A
 from pydantic import ValidationError
 
 from app.schemas.user import RegisterRequest
@@ -15,28 +17,28 @@ class TestRegisterSchema:
 
     def test_valid_input(self):
         """正常输入应通过校验。"""
-        req = RegisterRequest(username="test_user", password="123456")
+        req = RegisterRequest(username="test_user", password=PW_A)
         assert req.username == "test_user"
 
     def test_username_too_short(self):
         """TC-AUTH-003: 用户名少于 3 字符应校验失败。"""
         with pytest.raises(ValidationError):
-            RegisterRequest(username="ab", password="123456")
+            RegisterRequest(username="ab", password=PW_A)
 
     def test_username_too_long(self):
         """TC-AUTH-003: 用户名超过 50 字符应校验失败。"""
         with pytest.raises(ValidationError):
-            RegisterRequest(username="a" * 51, password="123456")
+            RegisterRequest(username="a" * 51, password=PW_A)
 
     def test_username_with_special_chars(self):
         """TC-AUTH-003: 用户名含特殊字符应校验失败。"""
         with pytest.raises(ValidationError):
-            RegisterRequest(username="user@name", password="123456")
+            RegisterRequest(username="user@name", password=PW_A)
 
     def test_username_with_chinese(self):
         """TC-AUTH-003: 用户名含中文应校验失败。"""
         with pytest.raises(ValidationError):
-            RegisterRequest(username="用户名", password="123456")
+            RegisterRequest(username="用户名", password=PW_A)
 
     def test_password_too_short(self):
         """TC-AUTH-004: 密码少于 6 位应校验失败。"""

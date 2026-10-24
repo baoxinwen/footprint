@@ -3,6 +3,8 @@
 覆盖: LocationCreate 新增验证
 """
 import pytest
+
+from ..password_fixtures import PW_A, PW_B
 from pydantic import ValidationError
 
 from app.schemas.export_import import ImportTrip
@@ -204,17 +206,17 @@ class TestChangePasswordSchema:
     def test_valid_input(self):
         """正常输入应通过校验。"""
         req = ChangePasswordRequest(
-            current_password="old_pass",
-            new_password="new_pass123",
-            confirm_password="new_pass123",
+            current_password=PW_A,
+            new_password=PW_B,
+            confirm_password=PW_B,
         )
-        assert req.new_password == "new_pass123"
+        assert req.new_password == PW_B
 
     def test_new_password_too_short(self):
         """新密码少于 6 位应校验失败。"""
         with pytest.raises(ValidationError):
             ChangePasswordRequest(
-                current_password="old_pass",
-                new_password="12345",
-                confirm_password="12345",
+                current_password=PW_A,
+                new_password=PW_A[:5],
+                confirm_password=PW_A[:5],
             )

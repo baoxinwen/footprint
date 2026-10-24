@@ -7,6 +7,8 @@ import zipfile
 import io
 import pytest
 
+from ..password_fixtures import PW_A, PW_B
+
 
 @pytest.mark.e2e
 class TestFullUserFlow:
@@ -16,11 +18,11 @@ class TestFullUserFlow:
         """模拟用户从注册到使用的完整流程。"""
 
         # Step 1: 注册
-        resp = client.post("/api/auth/register", json={"username": "e2euser", "password": "123456"})
+        resp = client.post("/api/auth/register", json={"username": "e2euser", "password": PW_A})
         assert resp.status_code == 200, "注册应成功"
 
         # Step 2: 登录
-        resp = client.post("/api/auth/login", json={"username": "e2euser", "password": "123456"})
+        resp = client.post("/api/auth/login", json={"username": "e2euser", "password": PW_A})
         assert resp.status_code == 200
         token = resp.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
@@ -118,12 +120,12 @@ class TestFullUserFlow:
 
         # Step 13: 修改密码
         resp = client.post("/api/auth/change-password", json={
-            "current_password": "123456", "new_password": "654321", "confirm_password": "654321"
+            "current_password": PW_A, "new_password": PW_B, "confirm_password": PW_B
         }, headers=headers)
         assert resp.status_code == 200
 
         # Step 14: 用新密码登录
-        resp = client.post("/api/auth/login", json={"username": "e2euser", "password": "654321"})
+        resp = client.post("/api/auth/login", json={"username": "e2euser", "password": PW_B})
         assert resp.status_code == 200
 
         # Step 15: 删除旅行
@@ -139,8 +141,8 @@ class TestFullUserFlow:
     def test_import_then_export_flow(self, client, upload_dir):
         """导入 JSON 后再导出的完整流程。"""
         # 注册登录
-        client.post("/api/auth/register", json={"username": "importuser", "password": "123456"})
-        resp = client.post("/api/auth/login", json={"username": "importuser", "password": "123456"})
+        client.post("/api/auth/register", json={"username": "importuser", "password": PW_A})
+        resp = client.post("/api/auth/login", json={"username": "importuser", "password": PW_A})
         headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
         # 导入

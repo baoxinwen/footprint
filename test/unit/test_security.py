@@ -3,6 +3,8 @@
 关联用例: TC-AUTH-005, TC-AUTH-006, TC-SEC-003
 """
 import pytest
+
+from ..password_fixtures import PW_A
 import bcrypt
 from datetime import datetime, timedelta, timezone
 from app.core.security import hash_password, verify_password, create_access_token
@@ -42,24 +44,24 @@ class TestPasswordHashing:
 
     def test_hash_password_returns_bcrypt(self):
         """TC-SEC-003: 密码应使用 bcrypt 加密存储。"""
-        hashed = hash_password("123456")
+        hashed = hash_password(PW_A)
         assert hashed.startswith("$2b$"), "密码应以 $2b$ 开头（bcrypt 格式）"
-        assert hashed != "123456", "密码不应以明文存储"
+        assert hashed != PW_A, "密码不应以明文存储"
 
     def test_verify_correct_password(self):
         """TC-AUTH-005: 正确密码应验证通过。"""
-        hashed = hash_password("123456")
-        assert verify_password("123456", hashed) is True
+        hashed = hash_password(PW_A)
+        assert verify_password(PW_A, hashed) is True
 
     def test_verify_wrong_password(self):
         """TC-AUTH-006: 错误密码应验证失败。"""
-        hashed = hash_password("123456")
+        hashed = hash_password(PW_A)
         assert verify_password("wrongpass", hashed) is False
 
     def test_different_hashes_for_same_password(self):
         """相同密码每次加密结果应不同（salt 不同）。"""
-        h1 = hash_password("123456")
-        h2 = hash_password("123456")
+        h1 = hash_password(PW_A)
+        h2 = hash_password(PW_A)
         assert h1 != h2
 
 

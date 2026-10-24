@@ -14,6 +14,8 @@ os.environ["AMAP_KEY"] = "test-amap-key"
 os.environ["TESTING"] = "1"
 
 import pytest
+
+from .password_fixtures import PW_A
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -101,8 +103,8 @@ def upload_dir(tmp_path):
 @pytest.fixture()
 def auth_headers(client):
     """注册并登录用户，返回带 token 的请求头。"""
-    client.post("/api/auth/register", json={"username": "testuser", "password": "Test@123456"})
-    resp = client.post("/api/auth/login", json={"username": "testuser", "password": "Test@123456"})
+    client.post("/api/auth/register", json={"username": "testuser", "password": PW_A})
+    resp = client.post("/api/auth/login", json={"username": "testuser", "password": PW_A})
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
@@ -110,8 +112,8 @@ def auth_headers(client):
 @pytest.fixture()
 def auth_headers_user_b(client):
     """注册并登录第二个用户。"""
-    client.post("/api/auth/register", json={"username": "userb", "password": "Test@123456"})
-    resp = client.post("/api/auth/login", json={"username": "userb", "password": "Test@123456"})
+    client.post("/api/auth/register", json={"username": "userb", "password": PW_A})
+    resp = client.post("/api/auth/login", json={"username": "userb", "password": PW_A})
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 

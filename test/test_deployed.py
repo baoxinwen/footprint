@@ -4,6 +4,8 @@ Docker 部署实例完整集成测试。
 用法: pytest test_deployed.py -v
 """
 import pytest
+
+from .password_fixtures import PW_A, PW_B
 import requests
 import json
 import io
@@ -23,7 +25,7 @@ def api(base_url):
     """带认证的 API 会话。"""
     s = requests.Session()
     username = "demo"
-    password = "123456"
+    password = PW_A
 
     # 登录（demo 用户应该已存在）
     resp = s.post(f"{base_url}/api/auth/login", json={
@@ -42,7 +44,7 @@ def api_user_b(base_url):
     """第二个用户的 API 会话（数据隔离测试）。"""
     s = requests.Session()
     username = "authtest"
-    password = "123456"
+    password = PW_A
 
     # 登录（authtest 用户应该已存在）
     resp = s.post(f"{base_url}/api/auth/login", json={
@@ -120,7 +122,7 @@ class TestAuth:
     def test_register_success(self, base_url):
         import time
         resp = requests.post(f"{base_url}/api/auth/register", json={
-            "username": f"newuser_{int(time.time())}", "password": "123456"
+            "username": f"newuser_{int(time.time())}", "password": PW_A
         })
         assert resp.status_code in (200, 400, 429)  # 400 = exists, 429 = rate limit
 
@@ -128,16 +130,16 @@ class TestAuth:
         import time
         username = f"dupuser_{int(time.time())}"
         requests.post(f"{base_url}/api/auth/register", json={
-            "username": username, "password": "123456"
+            "username": username, "password": PW_A
         })
         resp = requests.post(f"{base_url}/api/auth/register", json={
-            "username": username, "password": "654321"
+            "username": username, "password": PW_B
         })
         assert resp.status_code in (400, 429)
 
     def test_register_short_username(self, base_url):
         resp = requests.post(f"{base_url}/api/auth/register", json={
-            "username": "ab", "password": "123456"
+            "username": "ab", "password": PW_A
         })
         assert resp.status_code == 422
 
@@ -149,17 +151,17 @@ class TestAuth:
 
     def test_login_success(self, base_url):
         requests.post(f"{base_url}/api/auth/register", json={
-            "username": "logintest", "password": "123456"
+            "username": "logintest", "password": PW_A
         })
         resp = requests.post(f"{base_url}/api/auth/login", json={
-            "username": "logintest", "password": "123456"
+            "username": "logintest", "password": PW_A
         })
         assert resp.status_code == 200
         assert "access_token" in resp.json()
 
     def test_login_wrong_password(self, base_url):
         requests.post(f"{base_url}/api/auth/register", json={
-            "username": "logintest2", "password": "123456"
+            "username": "logintest2", "password": PW_A
         })
         resp = requests.post(f"{base_url}/api/auth/login", json={
             "username": "logintest2", "password": "wrong"
@@ -168,7 +170,7 @@ class TestAuth:
 
     def test_login_nonexistent_user(self, base_url):
         resp = requests.post(f"{base_url}/api/auth/login", json={
-            "username": "ghost_user_xyz", "password": "123456"
+            "username": "ghost_user_xyz", "password": PW_A
         })
         assert resp.status_code == 400
 
@@ -186,7 +188,7 @@ class TestAuth:
         import time
         s = requests.Session()
         username = f"changepwd_{int(time.time())}"
-        password = "Test@123456"
+        password = PW_A
 
         resp = s.post(f"{base_url}/api/auth/register", json={
             "username": username, "password": password
@@ -205,8 +207,8 @@ class TestAuth:
 
         resp = s.post(f"{base_url}/api/auth/change-password", json={
             "current_password": password,
-            "new_password": "NewPass123",
-            "confirm_password": "NewPass123"
+            "new_password": PW_B,
+            "confirm_password": PW_B
         })
         assert resp.status_code == 200
 
