@@ -35,6 +35,7 @@ declare module 'vue' {
     SkeletonList: typeof import('./src/components/SkeletonList.vue')['default']
     StatCard: typeof import('./src/components/StatCard.vue')['default']
     TripCover: typeof import('./src/components/TripCover.vue')['default']
+    TypewriterText: typeof import('./src/components/TypewriterText.vue')['default']
   }
   export interface GlobalDirectives {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

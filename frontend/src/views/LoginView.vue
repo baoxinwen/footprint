@@ -2,6 +2,7 @@
 import { nextTick, ref } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { ElMessage } from 'element-plus'
+import TypewriterText from '../components/TypewriterText.vue'
 
 const auth = useAuthStore()
 type AccountTab = 'login' | 'register'
@@ -110,7 +111,9 @@ async function handleRegister() {
 
       <div class="brand-block">
         <p class="brand-kicker">私人旅行档案</p>
-        <h1 class="brand-title">旅行足迹</h1>
+        <h1 class="brand-title">
+          <TypewriterText text="旅行足迹" />
+        </h1>
         <p class="brand-subtitle">登录后继续整理你的地图与旅程</p>
       </div>
     </div>
@@ -313,7 +316,7 @@ async function handleRegister() {
 
 .brand-kicker {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   letter-spacing: 0.26em;
   color: var(--color-accent);
   margin-bottom: var(--space-md);
@@ -323,7 +326,7 @@ async function handleRegister() {
   font-family: var(--font-serif);
   font-size: var(--text-3xl);
   line-height: var(--lh-3xl);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   letter-spacing: 0.06em;
   color: var(--color-ink);
 }
@@ -369,7 +372,7 @@ async function handleRegister() {
   background: transparent;
   color: var(--color-ink-muted);
   font-size: var(--text-base);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   cursor: pointer;
   transition: color var(--dur-base) var(--ease-out), background-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
 }
@@ -381,7 +384,7 @@ async function handleRegister() {
 .tab-btn.active {
   background: var(--color-surface);
   color: var(--color-primary);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   box-shadow: var(--shadow-soft);
 }
 
@@ -399,7 +402,7 @@ async function handleRegister() {
 
 .form-label {
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--color-ink-secondary);
 }
 
@@ -437,7 +440,7 @@ async function handleRegister() {
   background: var(--color-primary);
   color: var(--color-on-primary);
   font-size: var(--text-md);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   letter-spacing: 0.2em;
   cursor: pointer;
   transition: background-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out), transform var(--dur-fast) var(--ease-out);

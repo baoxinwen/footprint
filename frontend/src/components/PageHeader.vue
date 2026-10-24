@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import TypewriterText from './TypewriterText.vue'
+
 defineProps<{
   kicker?: string
   title: string
@@ -10,7 +12,9 @@ defineProps<{
   <header class="page-header">
     <div class="page-header-text">
       <p v-if="kicker" class="page-kicker">{{ kicker }}</p>
-      <h1 class="page-title">{{ title }}</h1>
+      <h1 class="page-title">
+        <TypewriterText :text="title" />
+      </h1>
       <p v-if="description" class="page-desc">{{ description }}</p>
     </div>
     <div v-if="$slots.actions" class="page-header-actions">
@@ -31,7 +35,7 @@ defineProps<{
 
 .page-kicker {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   letter-spacing: 0.22em;
   color: var(--color-accent);
   margin-bottom: var(--space-sm);
@@ -40,7 +44,7 @@ defineProps<{
 .page-title {
   font-size: var(--text-2xl);
   line-height: var(--lh-2xl);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .page-desc {
