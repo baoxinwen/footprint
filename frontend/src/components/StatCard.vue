@@ -94,7 +94,7 @@ watch(
 
 .stat-icon {
   display: inline-flex;
-  font-size: 20px;
+  font-size: var(--text-lg);
   color: var(--color-primary);
   margin-bottom: 2px;
 }

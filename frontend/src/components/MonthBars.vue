@@ -75,26 +75,7 @@ const geometry = computed(() => {
           :width="g.w"
           :height="g.h"
           rx="6"
-        >
-          <animate
-            attributeName="height"
-            from="0"
-            :to="g.h"
-            dur="0.5s"
-            fill="freeze"
-            calcMode="spline"
-            keySplines="0.22 1 0.36 1"
-          />
-          <animate
-            attributeName="y"
-            :from="H - PAD_BOTTOM"
-            :to="g.y"
-            dur="0.5s"
-            fill="freeze"
-            calcMode="spline"
-            keySplines="0.22 1 0.36 1"
-          />
-        </rect>
+        />
       </g>
       <!-- 基线 -->
       <line class="axis" :x1="0" :x2="W" :y1="H - PAD_BOTTOM + 0.5" :y2="H - PAD_BOTTOM + 0.5" />
@@ -110,6 +91,19 @@ const geometry = computed(() => {
         {{ g.month }}月
       </text>
     </svg>
+    <!-- 读屏数据等价物：role="img" 下 SVG 内文本不可达，走隐藏表格 -->
+    <table class="visually-hidden">
+      <caption>月度旅行次数分布</caption>
+      <thead>
+        <tr><th scope="col">月份</th><th scope="col">次数</th></tr>
+      </thead>
+      <tbody>
+        <tr v-for="b in bars" :key="'sr' + b.month">
+          <th scope="row">{{ b.month }}月</th>
+          <td>{{ b.count }}</td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 </template>
 
@@ -121,7 +115,7 @@ const geometry = computed(() => {
 }
 
 .value-label {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: var(--fw-semibold);
   fill: var(--color-ink-secondary);
   font-variant-numeric: tabular-nums;
@@ -139,6 +133,20 @@ const geometry = computed(() => {
 .bar-fill {
   fill: var(--color-primary);
   opacity: 0.92;
+  /* 入场生长动画走 CSS（SMIL 不受全局 reduced-motion 降级管束）：
+     scaleY 从柱底长出，等效于高度 0→h */
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: barGrow var(--dur-settle) var(--ease-out) both;
+}
+
+@keyframes barGrow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
 }
 
 .bar-fill.is-peak {
@@ -151,7 +159,7 @@ const geometry = computed(() => {
 }
 
 .month-label {
-  font-size: 12px;
+  font-size: var(--text-xs);
   fill: var(--color-ink-muted);
 }
 </style>

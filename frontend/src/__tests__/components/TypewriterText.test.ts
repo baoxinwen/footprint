@@ -11,9 +11,10 @@ describe('TypewriterText（铁律 4）', () => {
     expect(chars[2].attributes('style')).toContain('animation-delay: 60ms')
   })
 
-  it('exposes the full text via aria-label and hides animated chars from AT', () => {
+  it('exposes the full text to AT via sr-only span and hides animated chars', () => {
     const wrapper = mount(TypewriterText, { props: { text: '旅行足迹' } })
-    expect(wrapper.attributes('aria-label')).toBe('旅行足迹')
+    const srOnly = wrapper.find('.visually-hidden')
+    expect(srOnly.text()).toBe('旅行足迹')
     expect(wrapper.find('.typewriter-chars').attributes('aria-hidden')).toBe('true')
   })
 
@@ -24,7 +25,8 @@ describe('TypewriterText（铁律 4）', () => {
       await wrapper.vm.$nextTick()
       await wrapper.vm.$nextTick()
       expect(wrapper.find('.tw-char').exists()).toBe(false)
-      expect(wrapper.text()).toBe('旅行足迹')
+      // sr-only 真文本 + aria-hidden 平文两份
+      expect(wrapper.findAll('span').filter((s) => s.text() === '旅行足迹')).toHaveLength(2)
     } finally {
       vi.unstubAllGlobals()
     }
@@ -33,6 +35,6 @@ describe('TypewriterText（铁律 4）', () => {
   it('renders plain text when animated is false', () => {
     const wrapper = mount(TypewriterText, { props: { text: '旅行足迹', animated: false } })
     expect(wrapper.find('.tw-char').exists()).toBe(false)
-    expect(wrapper.text()).toBe('旅行足迹')
+    expect(wrapper.findAll('span').filter((s) => s.text() === '旅行足迹')).toHaveLength(2)
   })
 })

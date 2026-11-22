@@ -26,8 +26,6 @@ declare module 'vue' {
     ElUpload: typeof import('element-plus/es')['ElUpload']
     EmptyState: typeof import('./src/components/EmptyState.vue')['default']
     MonthBars: typeof import('./src/components/MonthBars.vue')['default']
-    PageHeader: typeof import('./src/components/PageHeader.vue')['default']
-    PhotoGrid: typeof import('./src/components/PhotoGrid.vue')['default']
     PhotoViewer: typeof import('./src/components/PhotoViewer.vue')['default']
     RankBars: typeof import('./src/components/RankBars.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
@@ -35,6 +33,7 @@ declare module 'vue' {
     SkeletonList: typeof import('./src/components/SkeletonList.vue')['default']
     StatCard: typeof import('./src/components/StatCard.vue')['default']
     TripCover: typeof import('./src/components/TripCover.vue')['default']
+    TripHero: typeof import('./src/components/TripHero.vue')['default']
     TypewriterText: typeof import('./src/components/TypewriterText.vue')['default']
   }
   export interface GlobalDirectives {

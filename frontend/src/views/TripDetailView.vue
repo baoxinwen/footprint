@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getTrip, deleteTrip, updateSortOrder } from '../api/trips'
 import { uploadPhoto, getPhotos, deletePhoto } from '../api/photos'
@@ -26,6 +26,7 @@ import request from '../api/request'
 import PhotoViewer from '../components/PhotoViewer.vue'
 import AuthenticatedImage from '../components/AuthenticatedImage.vue'
 import SkeletonList from '../components/SkeletonList.vue'
+import TripHero from '../components/TripHero.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -89,7 +90,7 @@ async function loadTrip() {
     if (generation !== tripLoadGeneration) return
     trip.value = null
     loadError.value = true
-    ElMessage.error('加载失败')
+    ElMessage.error('加载旅行详情失败，请稍后重试')
   } finally {
     if (generation === tripLoadGeneration) loading.value = false
   }
@@ -134,7 +135,7 @@ async function loadPhotos(locationId: number) {
     locationPhotos.value[locationId] = data
   } catch {
     if (latestPhotoLoads.get(locationId) !== generation) return
-    ElMessage.error('加载照片失败')
+    ElMessage.error('加载照片失败，请稍后重试')
   }
 }
 
@@ -154,11 +155,11 @@ async function handleUpload(locationId: number, file: File) {
   uploadingLocations.value.add(locationId)
   try {
     await uploadPhoto(locationId, file)
-    ElMessage.success('上传成功')
+    ElMessage.success('已上传')
     bumpPhotoCount(locationId, 1)
     loadPhotos(locationId)
   } catch {
-    ElMessage.error('上传失败')
+    ElMessage.error('上传照片失败，请稍后重试')
   } finally {
     const next = new Set(uploadingLocations.value)
     next.delete(locationId)
@@ -175,17 +176,21 @@ function beforeUpload(locationId: number) {
 
 async function handleDeletePhoto(photoId: number, locationId: number) {
   try {
-    await ElMessageBox.confirm('确定删除这张照片？', '删除照片', { type: 'warning' })
+    await ElMessageBox.confirm(
+      '这张照片将永久删除，无法恢复。',
+      '删除照片',
+      { type: 'warning', confirmButtonText: '删除照片', cancelButtonText: '取消' },
+    )
   } catch {
     return
   }
   try {
     await deletePhoto(photoId)
-    ElMessage.success('删除成功')
+    ElMessage.success('已删除照片')
     bumpPhotoCount(locationId, -1)
     loadPhotos(locationId)
   } catch {
-    ElMessage.error('删除失败')
+    ElMessage.error('删除照片失败，请稍后重试')
   }
 }
 
@@ -213,18 +218,18 @@ async function handleDelete() {
   try {
     await ElMessageBox.confirm(
       '删除后将同时清除该旅行下的所有地点和照片，且不可恢复',
-      '删除旅行',
-      { type: 'warning' }
+      `删除「${trip.value?.title ?? ''}」？`,
+      { type: 'warning', confirmButtonText: '删除旅行', cancelButtonText: '取消' }
     )
   } catch {
     return
   }
   try {
     await deleteTrip(tripId.value)
-    ElMessage.success('删除成功')
+    ElMessage.success('已删除旅行')
     router.push('/trips')
   } catch {
-    ElMessage.error('删除失败')
+    ElMessage.error('删除旅行失败，请稍后重试')
   }
 }
 
@@ -234,7 +239,7 @@ async function handleShare() {
     const { data } = await createShare(tripId.value)
     url = absoluteUrl(`/share/${data.token}`)
   } catch {
-    ElMessage.error('分享失败')
+    ElMessage.error('创建分享链接失败，请稍后重试')
     return
   }
   try {
@@ -261,7 +266,7 @@ async function handleExport(format: 'json' | 'markdown') {
     const resp = await request.get(`/trips/${tripId.value}/export/${format}`, { responseType: 'blob' })
     downloadBlob(resp.data, format === 'json' ? 'trip.json' : 'trip.zip')
   } catch {
-    ElMessage.error('导出失败')
+    ElMessage.error('导出失败，请稍后重试')
   }
   showExportDialog.value = false
 }
@@ -271,10 +276,12 @@ const shareCopied = ref(false)
 const shareCopiedFading = ref(false)
 let shareCopiedTimer = 0
 
-/* ---------- 拖拽排序（PRD 5.6，桌面端） ---------- */
+/* ---------- 排序（PRD 5.6）：鼠标拖拽 + 键盘 Alt+↑/↓ 双路径，共用一套重排逻辑 ---------- */
 const dragIndex = ref<number | null>(null)
 const overIndex = ref<number | null>(null)
 const sortSaving = ref(false)
+// aria-live 播报：键盘重排完成后读屏用户需要听到结果（视觉用户能看到列表移动）
+const sortAnnouncement = ref('')
 
 function onDragStart(index: number, event: DragEvent) {
   dragIndex.value = index
@@ -291,13 +298,8 @@ function onDragEnd() {
   overIndex.value = null
 }
 
-async function onDrop() {
-  const from = dragIndex.value
-  const to = overIndex.value
-  dragIndex.value = null
-  overIndex.value = null
-  if (from === null || to === null || from === to || !trip.value) return
-
+async function moveLocation(from: number, to: number) {
+  if (from === to || !trip.value) return
   const locs = [...trip.value.locations]
   const [moved] = locs.splice(from, 1)
   locs.splice(to, 0, moved)
@@ -309,13 +311,38 @@ async function onDrop() {
       tripId.value,
       locs.map((loc, i) => ({ location_id: loc.id, sort_order: i })),
     )
+    sortAnnouncement.value = `已将「${moved.name}」移动到第 ${to + 1} 位`
     ElMessage.success('顺序已保存')
   } catch {
-    ElMessage.error('顺序保存失败')
+    sortAnnouncement.value = '顺序保存失败，已恢复原顺序'
+    ElMessage.error('顺序保存失败，请稍后重试')
     loadTrip()
   } finally {
     sortSaving.value = false
   }
+}
+
+async function onDrop() {
+  const from = dragIndex.value
+  const to = overIndex.value
+  dragIndex.value = null
+  overIndex.value = null
+  if (from === null || to === null) return
+  await moveLocation(from, to)
+}
+
+/** 键盘替代拖拽：聚焦地点行后按 Alt+↑/↓ 移动该项（WCAG 2.1.1） */
+async function onLocationKeydown(index: number, event: KeyboardEvent) {
+  if (!event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return
+  event.preventDefault()
+  if (!trip.value) return
+  const to = event.key === 'ArrowUp' ? index - 1 : index + 1
+  if (to < 0 || to >= trip.value.locations.length) return
+  await moveLocation(index, to)
+  // 焦点跟手：列表重排后焦点移动到该项的新位置，继续按可连续调整
+  await nextTick()
+  const moved = trip.value.locations[to]
+  if (moved) document.getElementById(`location-toggle-${moved.id}`)?.focus()
 }
 
 defineExpose({ refreshPhotos: loadPhotos })
@@ -340,21 +367,18 @@ defineExpose({ refreshPhotos: loadPhotos })
         <span>返回旅行列表</span>
       </button>
 
-      <!-- ===== Hero ===== -->
-      <header class="journey-hero" :class="{ 'no-cover': !trip.cover_photo_url }">
-        <div v-if="trip.cover_photo_url" class="hero-cover">
-          <AuthenticatedImage :src="trip.cover_photo_url" :alt="trip.title" class="hero-cover-img" />
-          <div class="hero-shade" aria-hidden="true"></div>
-        </div>
-        <div class="hero-body">
-          <p class="hero-kicker">旅行记录</p>
-          <h1 class="trip-title">{{ trip.title }}</h1>
-          <p class="meta-date">{{ trip.start_date }} 至 {{ trip.end_date }}</p>
-          <div v-if="tripCities.length" class="hero-route" aria-label="途经城市">
-            <span v-for="city in tripCities" :key="city" class="hero-city">{{ city }}</span>
-          </div>
-          <p v-if="trip.description" class="meta-desc">{{ trip.description }}</p>
-
+      <!-- ===== Hero（TripHero 共享组件，颜色经 --hero-* 上下文变量传入插槽） ===== -->
+      <TripHero
+        kicker="旅行记录"
+        :title="trip.title"
+        :start-date="trip.start_date"
+        :end-date="trip.end_date"
+        :cover-url="trip.cover_photo_url ?? undefined"
+        cover-authenticated
+        :cities="tripCities"
+        :description="trip.description ?? undefined"
+      >
+        <template #foot>
           <div class="hero-foot">
             <dl class="hero-stats" aria-label="旅行概览">
               <div>
@@ -401,8 +425,8 @@ defineExpose({ refreshPhotos: loadPhotos })
               </button>
             </div>
           </div>
-        </div>
-      </header>
+        </template>
+      </TripHero>
 
       <!-- ===== 照片条 ===== -->
       <section v-if="allPhotosLoaded && allPhotos.length > 0" class="photo-strip-section" aria-label="全部照片">
@@ -410,12 +434,11 @@ defineExpose({ refreshPhotos: loadPhotos })
           <h2 class="strip-title">照片墙</h2>
           <span class="strip-count">{{ allPhotos.length }} 张</span>
         </div>
-        <div class="photo-strip" role="list">
+        <div class="photo-strip">
           <button
             v-for="(item, index) in allPhotos"
             :key="item.photo.id"
             type="button"
-            role="listitem"
             class="strip-item"
             :aria-label="`查看照片：${item.locationName}`"
             @click="openStripViewer(index)"
@@ -438,8 +461,10 @@ defineExpose({ refreshPhotos: loadPhotos })
             <h2 id="route-heading" class="route-heading">按地点重访这次旅行</h2>
           </div>
           <span class="route-count" :class="{ saving: sortSaving }">
-            {{ sortSaving ? '保存顺序中…' : `${trip.locations.length} 站 · 拖动卡片可调整顺序` }}
+            {{ sortSaving ? '保存顺序中…' : `${trip.locations.length} 站 · 拖动或聚焦后按 Alt+↑/↓ 调整顺序` }}
           </span>
+          <!-- 键盘排序结果播报（视觉用户直接看到列表移动） -->
+          <span class="visually-hidden" role="status">{{ sortAnnouncement }}</span>
         </div>
 
         <div v-if="trip.locations.length === 0" class="route-empty">
@@ -473,6 +498,7 @@ defineExpose({ refreshPhotos: loadPhotos })
               :aria-controls="`location-panel-${loc.id}`"
               :aria-label="`${expandedLocations.has(loc.id) ? '收起' : '展开'}地点：${loc.name}`"
               @click="toggleLocation(loc)"
+              @keydown="onLocationKeydown(index, $event)"
             >
               <span class="drag-handle" title="拖动调整顺序" aria-hidden="true">
                 <el-icon><Rank /></el-icon>
@@ -567,7 +593,12 @@ defineExpose({ refreshPhotos: loadPhotos })
       @update:index="viewerIndex = $event"
     />
 
-    <el-dialog v-model="showExportDialog" title="导出旅行" width="400px">
+    <!-- 宽度上限留出边距，320px 视口不裁剪导出操作 -->
+    <el-dialog
+      v-model="showExportDialog"
+      title="导出旅行"
+      width="min(400px, calc(100vw - 32px))"
+    >
       <div class="export-dialog">
         <div class="export-options">
           <button type="button" class="export-option" @click="handleExport('json')">
@@ -624,135 +655,7 @@ defineExpose({ refreshPhotos: loadPhotos })
   background: var(--color-primary-soft);
 }
 
-/* ========== Hero ========== */
-.journey-hero {
-  position: relative;
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-card);
-  margin-bottom: var(--space-lg);
-}
-
-.hero-cover {
-  position: absolute;
-  inset: 0;
-}
-
-.hero-cover :deep(.hero-cover-img) {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.hero-shade {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to top,
-    rgba(10, 16, 13, 0.88) 0%,
-    rgba(10, 16, 13, 0.55) 45%,
-    rgba(10, 16, 13, 0.18) 100%
-  );
-}
-
-.hero-body {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 380px;
-  justify-content: flex-end;
-  padding: var(--space-2xl) clamp(var(--space-lg), 4vw, var(--space-2xl)) var(--space-lg);
-  color: #f4f2ec;
-}
-
-.journey-hero.no-cover .hero-body {
-  min-height: 0;
-  background:
-    radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--color-primary) 26%, transparent) 0%, transparent 55%),
-    var(--color-surface);
-  color: var(--color-ink);
-}
-
-.journey-hero.no-cover .meta-date,
-.journey-hero.no-cover .meta-desc,
-.journey-hero.no-cover .hero-stats dd {
-  color: var(--color-ink-secondary);
-}
-
-.journey-hero.no-cover .hero-city {
-  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-  color: var(--color-primary);
-  border-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
-}
-
-.journey-hero.no-cover .hero-stats {
-  border-color: var(--color-border);
-}
-
-.hero-kicker {
-  font-size: var(--text-xs);
-  font-weight: var(--fw-semibold);
-  letter-spacing: 0.24em;
-  color: var(--color-accent);
-  text-transform: uppercase;
-  margin-bottom: var(--space-sm);
-}
-
-.trip-title {
-  font-size: var(--text-3xl);
-  line-height: var(--lh-3xl);
-  font-weight: var(--fw-bold);
-  color: inherit;
-  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
-}
-
-.journey-hero.no-cover .trip-title {
-  text-shadow: none;
-}
-
-.meta-date {
-  margin-top: var(--space-sm);
-  font-size: var(--text-sm);
-  letter-spacing: 0.12em;
-  color: rgba(244, 242, 236, 0.82);
-}
-
-.hero-route {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: var(--space-md);
-}
-
-.hero-city {
-  padding: 4px 12px;
-  border: 1px solid rgba(244, 242, 236, 0.35);
-  border-radius: 999px;
-  background: rgba(244, 242, 236, 0.12);
-  backdrop-filter: blur(4px);
-  color: #f4f2ec;
-  font-size: var(--text-xs);
-  letter-spacing: 0.06em;
-}
-
-.meta-desc {
-  margin-top: var(--space-md);
-  max-width: 640px;
-  font-size: var(--text-base);
-  line-height: 1.7;
-  color: rgba(244, 242, 236, 0.88);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
+/* ========== Hero 插槽内容（hero 本体样式在 TripHero 组件内，取色走 --hero-* 上下文变量） ========== */
 .hero-foot {
   display: flex;
   align-items: flex-end;
@@ -760,12 +663,8 @@ defineExpose({ refreshPhotos: loadPhotos })
   gap: var(--space-lg);
   margin-top: var(--space-lg);
   padding-top: var(--space-md);
-  border-top: 1px solid rgba(244, 242, 236, 0.22);
+  border-top: 1px solid var(--hero-border);
   flex-wrap: wrap;
-}
-
-.journey-hero.no-cover .hero-foot {
-  border-top-color: var(--color-border);
 }
 
 .hero-stats {
@@ -776,7 +675,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 .hero-stats dt {
   font-size: var(--text-xs);
   letter-spacing: 0.14em;
-  color: rgba(244, 242, 236, 0.68);
+  color: var(--hero-text-faint);
   margin-bottom: 2px;
 }
 
@@ -784,7 +683,7 @@ defineExpose({ refreshPhotos: loadPhotos })
   font-family: var(--font-serif);
   font-size: var(--text-md);
   font-weight: var(--fw-bold);
-  color: #f4f2ec;
+  color: var(--hero-text);
 }
 
 .header-actions {
@@ -810,8 +709,8 @@ defineExpose({ refreshPhotos: loadPhotos })
     transform var(--dur-fast) var(--ease-out);
 }
 
-.action-btn:active {
-  transform: scale(0.97);
+.action-btn:active:not(:disabled) {
+  transform: scale(0.96);
 }
 
 .action-btn.primary {
@@ -825,44 +724,25 @@ defineExpose({ refreshPhotos: loadPhotos })
 }
 
 .action-btn.secondary {
-  background: rgba(244, 242, 236, 0.14);
-  border-color: rgba(244, 242, 236, 0.4);
-  color: #f4f2ec;
+  background: var(--hero-btn-bg);
+  border-color: var(--hero-border-strong);
+  color: var(--hero-text);
   backdrop-filter: blur(4px);
 }
 
 .action-btn.secondary:hover {
-  background: rgba(244, 242, 236, 0.26);
-}
-
-.journey-hero.no-cover .action-btn.secondary {
-  background: var(--color-surface);
-  border-color: var(--color-border-strong);
-  color: var(--color-ink-secondary);
-}
-
-.journey-hero.no-cover .action-btn.secondary:hover {
-  background: var(--color-surface-muted);
+  background: var(--hero-btn-bg-hover);
 }
 
 .action-btn.danger {
   background: transparent;
-  border-color: rgba(244, 242, 236, 0.4);
-  color: #ffb4a6;
+  border-color: var(--hero-danger-border);
+  color: var(--hero-danger-text);
 }
 
 .action-btn.danger:hover {
-  background: rgba(179, 64, 46, 0.28);
-  border-color: rgba(255, 180, 166, 0.6);
-}
-
-.journey-hero.no-cover .action-btn.danger {
-  color: var(--color-danger);
-  border-color: color-mix(in srgb, var(--color-danger) 40%, transparent);
-}
-
-.journey-hero.no-cover .action-btn.danger:hover {
-  background: var(--color-danger-soft);
+  background: var(--hero-danger-bg-hover);
+  border-color: var(--hero-danger-border);
 }
 
 /* ========== 照片条 ========== */
@@ -914,11 +794,11 @@ defineExpose({ refreshPhotos: loadPhotos })
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 360ms var(--ease-out);
+  transition: transform var(--dur-expand) var(--ease-out);
 }
 
 .strip-item:hover img {
-  transform: scale(1.05);
+  transform: scale(1.04);
 }
 
 .strip-location {
@@ -1008,7 +888,7 @@ defineExpose({ refreshPhotos: loadPhotos })
   font-size: var(--text-sm);
   font-weight: var(--fw-medium);
   cursor: pointer;
-  transition: background-color var(--dur-base) ease, box-shadow var(--dur-base) ease;
+  transition: background-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
 }
 
 .route-empty-action:hover {
@@ -1042,7 +922,7 @@ defineExpose({ refreshPhotos: loadPhotos })
   box-shadow: var(--shadow-soft);
   overflow: hidden;
   transition: box-shadow var(--dur-base) var(--ease-out),
-    opacity var(--dur-base) ease,
+    opacity var(--dur-base) var(--ease-out),
     transform var(--dur-base) var(--ease-out);
 }
 
@@ -1073,7 +953,7 @@ defineExpose({ refreshPhotos: loadPhotos })
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color var(--dur-fast) ease;
+  transition: background-color var(--dur-fast) var(--ease-out);
 }
 
 .location-toggle:hover {
@@ -1090,10 +970,11 @@ defineExpose({ refreshPhotos: loadPhotos })
   color: var(--color-ink-muted);
   cursor: grab;
   opacity: 0;
-  transition: opacity var(--dur-fast) ease, color var(--dur-fast) ease, background-color var(--dur-fast) ease;
+  transition: opacity var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
 }
 
-.location-toggle:hover .drag-handle {
+.location-toggle:hover .drag-handle,
+.location-toggle:focus-visible .drag-handle {
   opacity: 1;
 }
 
@@ -1153,7 +1034,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 }
 
 .expand-icon {
-  font-size: 15px;
+  font-size: var(--text-base);
   color: var(--color-ink-muted);
   transition: transform var(--dur-base) var(--ease-out);
 }
@@ -1180,7 +1061,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 .section-label {
   font-size: var(--text-xs);
   font-weight: var(--fw-semibold);
-  letter-spacing: 0.18em;
+  letter-spacing: 0.22em;
   color: var(--color-ink-muted);
   margin-bottom: var(--space-md);
 }
@@ -1216,7 +1097,7 @@ defineExpose({ refreshPhotos: loadPhotos })
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 360ms var(--ease-out);
+  transition: transform var(--dur-expand) var(--ease-out);
 }
 
 .photo-viewer-trigger:hover img {
@@ -1232,11 +1113,20 @@ defineExpose({ refreshPhotos: loadPhotos })
   padding: 6px;
   pointer-events: none;
   opacity: 0;
-  transition: opacity var(--dur-fast) ease;
+  transition: opacity var(--dur-fast) var(--ease-out);
 }
 
-.photo-item:hover .photo-overlay {
+/* 照片网格习语（同 PhotoViewer/PhotoGrid 旧习语）：hover 显现之外，
+   键盘聚焦删除钮也要显现，触屏（无 hover）常显——否则焦点/删除钮不可见 */
+.photo-item:hover .photo-overlay,
+.photo-item:focus-within .photo-overlay {
   opacity: 1;
+}
+
+@media (hover: none) {
+  .photo-overlay {
+    opacity: 1;
+  }
 }
 
 .photo-delete {
@@ -1251,7 +1141,7 @@ defineExpose({ refreshPhotos: loadPhotos })
   background: rgba(10, 10, 9, 0.62);
   color: #fff;
   cursor: pointer;
-  transition: background-color var(--dur-fast) ease;
+  transition: background-color var(--dur-fast) var(--ease-out);
 }
 
 .photo-delete:hover {
@@ -1275,7 +1165,7 @@ defineExpose({ refreshPhotos: loadPhotos })
   border-radius: var(--radius-sm);
   color: var(--color-ink-muted);
   font-size: var(--text-sm);
-  transition: color var(--dur-base) ease, border-color var(--dur-base) ease;
+  transition: color var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
 }
 
 .upload-trigger:hover {
@@ -1284,7 +1174,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 }
 
 .upload-trigger .el-icon {
-  font-size: 20px;
+  font-size: var(--text-lg);
 }
 
 /* ========== 加载失败 ========== */
@@ -1349,7 +1239,7 @@ defineExpose({ refreshPhotos: loadPhotos })
   background: var(--color-surface);
   cursor: pointer;
   text-align: left;
-  transition: border-color var(--dur-fast) ease, background-color var(--dur-fast) ease;
+  transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
 }
 
 .export-option:hover {
@@ -1366,7 +1256,7 @@ defineExpose({ refreshPhotos: loadPhotos })
   border-radius: var(--radius-sm);
   background: var(--color-surface-muted);
   color: var(--color-primary);
-  font-size: 20px;
+  font-size: var(--text-lg);
   flex-shrink: 0;
 }
 
@@ -1392,7 +1282,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 .location-collapse {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 360ms var(--ease-out);
+  transition: grid-template-rows var(--dur-expand) var(--ease-out);
 }
 
 .location-collapse.open {
@@ -1412,7 +1302,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 /* 分享对勾自熄：淡出后图标复位（铁律 10） */
 .share-copied {
   color: var(--color-primary);
-  transition: opacity var(--dur-base) ease;
+  transition: opacity var(--dur-base) var(--ease-out);
 }
 
 .share-copied.is-fading {
@@ -1430,16 +1320,6 @@ defineExpose({ refreshPhotos: loadPhotos })
 @media (max-width: 768px) {
   .detail-page {
     padding: var(--space-md) var(--space-md) var(--space-2xl);
-  }
-
-  .hero-body {
-    min-height: 300px;
-    padding: var(--space-xl) var(--space-lg) var(--space-lg);
-  }
-
-  .trip-title {
-    font-size: var(--text-xl);
-    line-height: var(--lh-xl);
   }
 
   .hero-foot {

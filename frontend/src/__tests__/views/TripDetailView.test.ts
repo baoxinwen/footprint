@@ -17,6 +17,7 @@ vi.mock('vue-router', () => ({
 vi.mock('../../api/trips', () => ({
   getTrip: vi.fn(),
   deleteTrip: vi.fn(),
+  updateSortOrder: vi.fn(),
 }))
 
 vi.mock('../../api/photos', () => ({
@@ -39,7 +40,7 @@ vi.mock('element-plus', async (importOriginal) => {
 })
 
 import TripDetailView from '../../views/TripDetailView.vue'
-import { getTrip } from '../../api/trips'
+import { getTrip, updateSortOrder } from '../../api/trips'
 import { deletePhoto, getPhotos } from '../../api/photos'
 
 enableAutoUnmount(afterEach)
@@ -420,5 +421,47 @@ describe('TripDetailView', () => {
 
     expect(wrapper.getComponent(AuthenticatedImageStub).props('src')).toBe('/fresh-thumb')
     expect(getPhotos).toHaveBeenCalledTimes(3)
+  })
+
+  it('reorders locations via Alt+ArrowDown and saves the new order', async () => {
+    vi.mocked(getTrip).mockResolvedValue({ data: structuredClone(mockTripData) } as any)
+    vi.mocked(getPhotos).mockResolvedValue({ data: [] } as any)
+    vi.mocked(updateSortOrder).mockResolvedValue({ data: {} } as any)
+
+    const wrapper = mount(TripDetailView, {
+      attachTo: document.body, // 焦点断言需要真实挂在文档树上
+      global: { stubs: { ElIcon: true, ElUpload: true, ElDialog: true } },
+    })
+    await vi.waitFor(() => expect(wrapper.find('.location-toggle').exists()).toBe(true))
+
+    // 聚焦第一行的开关按钮，Alt+↓ 下移一位
+    await wrapper.get('.location-toggle').trigger('keydown', { altKey: true, key: 'ArrowDown' })
+    await flushPromises()
+
+    expect(updateSortOrder).toHaveBeenCalledWith(1, [
+      { location_id: 2, sort_order: 0 },
+      { location_id: 1, sort_order: 1 },
+    ])
+    // 焦点跟手：被移动项（故宫 id=1）落到新位置 index 1，焦点随行可连续调整
+    await nextTick()
+    expect(document.activeElement?.id).toBe('location-toggle-1')
+    // aria-live 播报结果
+    expect(wrapper.get('[role="status"]').text()).toContain('故宫博物院')
+  })
+
+  it('ignores non-Alt or horizontal arrow keys in the location list', async () => {
+    vi.mocked(getTrip).mockResolvedValue({ data: structuredClone(mockTripData) } as any)
+    vi.mocked(getPhotos).mockResolvedValue({ data: [] } as any)
+
+    const wrapper = mount(TripDetailView, {
+      global: { stubs: { ElIcon: true, ElUpload: true, ElDialog: true } },
+    })
+    await vi.waitFor(() => expect(wrapper.find('.location-toggle').exists()).toBe(true))
+
+    await wrapper.get('.location-toggle').trigger('keydown', { altKey: true, key: 'ArrowLeft' })
+    await wrapper.get('.location-toggle').trigger('keydown', { key: 'ArrowDown' })
+    await flushPromises()
+
+    expect(updateSortOrder).not.toHaveBeenCalled()
   })
 })

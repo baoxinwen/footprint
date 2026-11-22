@@ -6,6 +6,7 @@ import type { ShareViewTrip, Photo } from '../types'
 import { renderMarkdown } from '../utils/markdown'
 import { formatDateCN } from '../utils/format'
 import PhotoViewer from '../components/PhotoViewer.vue'
+import TripHero from '../components/TripHero.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -56,7 +57,7 @@ async function loadPhotos(locationId: number) {
     const { data } = await getSharedPhotos(token, locationId)
     locationPhotos.value[locationId] = data
   } catch {
-    photoErrors.value[locationId] = '照片加载失败，请重试'
+    photoErrors.value[locationId] = '照片加载失败，请检查网络连接后重新加载'
   } finally {
     photoLoading.value[locationId] = false
   }
@@ -92,27 +93,26 @@ const stopCount = computed(() => trip.value?.locations.length ?? 0)
       <span class="brand-name">旅行足迹</span>
     </header>
 
-    <div v-if="loading" class="share-loading" aria-label="加载中"></div>
+    <div v-if="loading" class="share-loading" role="status"><span class="visually-hidden">加载中</span></div>
 
-    <div v-else-if="error" class="error-state">
+    <div v-else-if="error" class="error-state" role="alert">
       <p>{{ error }}</p>
+      <p class="error-hint">请向分享者确认链接是否完整、是否已过期，或获取新的分享链接。</p>
+      <button type="button" class="error-action" @click="router.push('/')">返回首页</button>
     </div>
 
     <div v-else-if="trip" class="share-content">
-      <!-- Hero -->
-      <header class="share-hero" :class="{ 'no-cover': !trip.cover_photo_url }">
-        <div v-if="trip.cover_photo_url" class="hero-cover">
-          <img :src="trip.cover_photo_url" :alt="trip.title" />
-          <div class="hero-shade" aria-hidden="true"></div>
-        </div>
-        <div class="hero-body">
-          <p class="hero-kicker">旅行分享</p>
-          <h1 class="share-title">{{ trip.title }}</h1>
-          <p class="share-date">{{ trip.start_date }} ~ {{ trip.end_date }}</p>
-          <p v-if="trip.description" class="share-desc">{{ trip.description }}</p>
-          <p v-if="trip.expires_at" class="share-expiry">链接有效期至 {{ formatDateCN(trip.expires_at) }}</p>
-        </div>
-      </header>
+      <!-- Hero（TripHero 共享组件，紧凑公开页档） -->
+      <TripHero
+        kicker="旅行分享"
+        :title="trip.title"
+        :start-date="trip.start_date"
+        :end-date="trip.end_date"
+        :cover-url="trip.cover_photo_url ?? undefined"
+        :description="trip.description ?? undefined"
+        :expiry-note="trip.expires_at ? `链接有效期至 ${formatDateCN(trip.expires_at)}` : undefined"
+        compact
+      />
 
       <!-- 概览 -->
       <div class="share-meta">
@@ -152,7 +152,7 @@ const stopCount = computed(() => trip.value?.locations.length ?? 0)
                 :data-testid="`retry-photos-${loc.id}`"
                 @click="loadPhotos(loc.id)"
               >
-                重试
+                重新加载
               </button>
             </div>
             <div v-if="locationPhotos[loc.id]?.length" class="photos-grid">
@@ -236,7 +236,7 @@ const stopCount = computed(() => trip.value?.locations.length ?? 0)
   border: 3px solid var(--color-border);
   border-top-color: var(--color-primary);
   border-radius: 999px;
-  animation: spin 0.8s linear infinite;
+  animation: spin var(--dur-spin) linear infinite;
 }
 
 @keyframes spin {
@@ -249,119 +249,27 @@ const stopCount = computed(() => trip.value?.locations.length ?? 0)
   color: var(--color-ink-secondary);
 }
 
-/* ========== Hero ========== */
-.share-hero {
-  position: relative;
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-card);
-}
-
-.hero-cover {
-  position: absolute;
-  inset: 0;
-}
-
-.hero-cover img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.hero-shade {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to top,
-    rgba(10, 16, 13, 0.88) 0%,
-    rgba(10, 16, 13, 0.55) 45%,
-    rgba(10, 16, 13, 0.18) 100%
-  );
-}
-
-.hero-body {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 340px;
-  justify-content: flex-end;
-  padding: var(--space-2xl) var(--space-xl) var(--space-lg);
-  color: #f4f2ec;
-}
-
-.share-hero.no-cover .hero-body {
-  min-height: 0;
-  background:
-    radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--color-primary) 26%, transparent) 0%, transparent 55%),
-    var(--color-surface);
-  color: var(--color-ink);
-}
-
-.share-hero.no-cover .share-date,
-.share-hero.no-cover .share-desc {
-  color: var(--color-ink-secondary);
-}
-
-.share-hero.no-cover .share-expiry {
+.error-hint {
+  margin-top: var(--space-sm);
+  font-size: var(--text-sm);
   color: var(--color-ink-muted);
 }
 
-.hero-kicker {
-  font-size: var(--text-xs);
-  font-weight: var(--fw-semibold);
-  letter-spacing: 0.24em;
-  color: var(--color-accent);
-  text-transform: uppercase;
-  margin-bottom: var(--space-sm);
-}
-
-.share-title {
-  font-family: var(--font-serif);
-  font-size: var(--text-2xl);
-  line-height: var(--lh-2xl);
-  font-weight: var(--fw-bold);
-  color: inherit;
-  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
-}
-
-.share-hero.no-cover .share-title {
-  text-shadow: none;
-}
-
-.share-date {
-  margin-top: var(--space-sm);
-  font-size: var(--text-sm);
-  letter-spacing: 0.12em;
-  color: rgba(244, 242, 236, 0.82);
-}
-
-.share-desc {
-  margin-top: var(--space-md);
-  max-width: 620px;
-  font-size: var(--text-base);
-  line-height: 1.7;
-  color: rgba(244, 242, 236, 0.88);
-}
-
-.share-expiry {
-  margin-top: var(--space-md);
-  display: inline-flex;
-  align-self: flex-start;
-  padding: 4px 12px;
+.error-action {
+  margin-top: var(--space-lg);
+  min-height: 40px;
+  padding: 0 var(--space-lg);
+  border: none;
   border-radius: 999px;
-  border: 1px solid rgba(244, 242, 236, 0.35);
-  background: rgba(244, 242, 236, 0.12);
-  font-size: var(--text-xs);
-  color: rgba(244, 242, 236, 0.85);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background-color var(--dur-base) var(--ease-out);
 }
 
-.share-hero.no-cover .share-expiry {
-  border-color: var(--color-border);
-  background: var(--color-surface-muted);
+.error-action:hover {
+  background: var(--color-primary-hover);
 }
 
 /* ========== 概览 ========== */
@@ -407,7 +315,7 @@ const stopCount = computed(() => trip.value?.locations.length ?? 0)
   color: inherit;
   font: inherit;
   text-align: left;
-  transition: background-color var(--dur-fast) ease;
+  transition: background-color var(--dur-fast) var(--ease-out);
 }
 
 .location-header:hover {
@@ -507,7 +415,7 @@ const stopCount = computed(() => trip.value?.locations.length ?? 0)
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 360ms var(--ease-out);
+  transition: transform var(--dur-expand) var(--ease-out);
 }
 
 .photo-item:hover img {
@@ -564,16 +472,6 @@ const stopCount = computed(() => trip.value?.locations.length ?? 0)
 @media (max-width: 768px) {
   .share-page {
     padding: var(--space-md) var(--space-md) var(--space-xl);
-  }
-
-  .share-title {
-    font-size: var(--text-xl);
-    line-height: var(--lh-xl);
-  }
-
-  .hero-body {
-    min-height: 280px;
-    padding: var(--space-xl) var(--space-lg) var(--space-lg);
   }
 
   .location-summary {

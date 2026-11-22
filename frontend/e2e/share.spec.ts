@@ -12,8 +12,8 @@ test.describe('分享功能', () => {
     // 点击分享按钮
     await page.locator('button:has-text("分享")').click()
 
-    // 应显示成功提示（链接已复制）
-    await expect(page.locator('.el-message')).toBeVisible()
+    // 铁律 10：复制成功走按钮内对勾反馈（aria-label 切换），不弹 toast
+    await expect(page.locator('button[aria-label="分享链接已复制"]')).toBeVisible()
   })
 
   test('访问无效分享链接显示错误', async ({ page }) => {

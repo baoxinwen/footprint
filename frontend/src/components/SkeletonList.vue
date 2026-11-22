@@ -12,20 +12,23 @@ withDefaults(
 </script>
 
 <template>
-  <div v-if="variant === 'cards'" class="skeleton-cards" aria-hidden="true">
-    <div v-for="i in count" :key="i" class="skeleton-card">
-      <div class="skeleton cover"></div>
-      <div class="skeleton line w-70"></div>
-      <div class="skeleton line w-45"></div>
-    </div>
-  </div>
-  <div v-else class="skeleton-rows" aria-hidden="true">
-    <div v-for="i in count" :key="i" class="skeleton-row">
-      <div class="skeleton circle"></div>
-      <div class="skeleton-row-lines">
-        <div class="skeleton line w-30"></div>
+  <div class="skeleton-status" role="status">
+    <span class="visually-hidden">加载中</span>
+    <div v-if="variant === 'cards'" class="skeleton-cards" aria-hidden="true">
+      <div v-for="i in count" :key="i" class="skeleton-card">
+        <div class="skeleton cover"></div>
         <div class="skeleton line w-70"></div>
-        <div class="skeleton line w-55"></div>
+        <div class="skeleton line w-45"></div>
+      </div>
+    </div>
+    <div v-else class="skeleton-rows" aria-hidden="true">
+      <div v-for="i in count" :key="i" class="skeleton-row">
+        <div class="skeleton circle"></div>
+        <div class="skeleton-row-lines">
+          <div class="skeleton line w-30"></div>
+          <div class="skeleton line w-70"></div>
+          <div class="skeleton line w-55"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -40,7 +43,8 @@ withDefaults(
 
 .skeleton-card {
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  /* 嵌套圆角公式：外圆角 = 内圆角 + 内边距（内 .skeleton 为 radius-sm + padding-md） */
+  border-radius: calc(var(--radius-sm) + var(--space-md));
   padding: var(--space-md);
   background: var(--color-surface);
 }

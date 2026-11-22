@@ -14,22 +14,24 @@
   --color-field: #f2f2ef;           /* 输入字段面（介于 canvas 与 muted） */
   --color-ink: #1e1e1c;             /* 主文字（禁纯黑） */
   --color-ink-secondary: #60605b;   /* 次级文字 */
-  --color-ink-muted: #8f8f89;       /* 弱文字 */
+  --color-ink-muted: #6b6b66;       /* 弱文字（WCAG AA：对 surface-muted ≥4.5） */
   --color-border: #e9e9e5;          /* 结构分隔线（仅语义分隔，不再用于面包边） */
   --color-border-strong: #d8d8d2;
   --color-primary: #1f5c46;         /* 墨绿 */
   --color-primary-hover: #174735;
   --color-primary-soft: #e7efe9;
   --color-on-primary: #fdfcf9;
-  --color-accent: #b8862d;          /* 赭金：数据高亮专用（排名/峰值/节点） */
-  --color-accent-hover: #9c6f20;
+  --color-accent: #8f6a20;          /* 赭金：数据高亮专用（排名/峰值/节点）；深至文字对比 ≥4.5（WCAG AA） */
+  --color-accent-hover: #755618;
   --color-accent-soft: #f4ead2;
   --color-on-accent: #fffdf6;
   --color-danger: #b3402e;          /* 仅危险场景 */
   --color-danger-hover: #93321f;
   --color-danger-soft: #f7e6e1;
-  --color-route: #b8862d;           /* 地图路线强调 = accent */
+  --color-route: #8f6a20;           /* 地图路线强调 = accent */
   --color-route-soft: #f4ead2;
+  --color-route-end: #c64b36;       /* 路线终点标记（地图瓦片上下文，明暗同值） */
+  --color-on-photo: #f4f2ec;        /* 照片封面上的文字族（hero 插槽等，坐在深色遮罩上，明暗同值） */
 
   /* ---- 字体 ---- */
   --font-serif: 'Noto Serif SC', 'Songti SC', 'SimSun', Georgia, serif;
@@ -86,6 +88,9 @@
   --dur-slow: 240ms;
   --dur-settle: 480ms;   /* 过阻尼弹簧 1200/80 的等效落定时长 */
   --dur-pop: 320ms;      /* 欠阻尼弹簧 380/18 的等效弹跳时长 */
+  --dur-expand: 360ms;   /* 照片缩放 / Grid 折叠展开等较大位移 */
+  --dur-grow: 600ms;     /* 条形图宽度生长 */
+  --dur-spin: 800ms;     /* 加载旋转整圈 */
   --dur-type-char: 90ms; /* 单字清晰化时长 */
   --dur-type-stagger: 30ms; /* 相邻字错开 */
 
@@ -140,7 +145,7 @@ html.dark {
   --color-field: #1a1a19;
   --color-ink: #f1f1ef;
   --color-ink-secondary: #b4b4af;
-  --color-ink-muted: #7d7d76;
+  --color-ink-muted: #85857e;       /* 深色同步提亮至对 surface-muted ≥4.5 */
   --color-border: #262624;
   --color-border-strong: #3c3c38;
   --color-primary: #7cc4a1;
@@ -224,6 +229,19 @@ b, strong {
 /* 铁律 6：数字锁等宽，跳动零抖动 */
 .tnums {
   font-variant-numeric: tabular-nums;
+}
+
+/* 读屏专用：视觉隐藏但保留可聚焦/可播报（导入文件、live region 等复用） */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 button, a, input, select, textarea {
@@ -468,7 +486,7 @@ select:focus-visible {
 }
 
 .markdown-body strong {
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .markdown-body hr {
@@ -550,6 +568,7 @@ select:focus-visible {
   *::after {
     scroll-behavior: auto !important;
     animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }

@@ -72,7 +72,7 @@ test.describe('旅行 CRUD 流程', () => {
     await page.locator('button:has-text("删除")').click()
 
     // 确认删除对话框
-    await page.locator('.el-message-box__btns button:has-text("确定")').click()
+    await page.locator('.el-message-box__btns button:has-text("删除旅行")').click()
 
     // 应跳转回旅行列表
     await expect(page).toHaveURL(/\/trips/)

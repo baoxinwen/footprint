@@ -70,7 +70,7 @@ function rankClass(index: number) {
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color var(--dur-fast) ease;
+  transition: background-color var(--dur-fast) var(--ease-out);
 }
 
 .rank-main:hover:not(:disabled) {
@@ -138,7 +138,7 @@ function rankClass(index: number) {
   height: 100%;
   border-radius: 999px;
   background: linear-gradient(90deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 65%, var(--color-accent)));
-  transition: width 600ms var(--ease-out);
+  transition: width var(--dur-grow) var(--ease-out);
 }
 
 .rank-count {

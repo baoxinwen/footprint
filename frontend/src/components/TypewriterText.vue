@@ -23,7 +23,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <span class="typewriter" role="text" :aria-label="text">
+  <span class="typewriter">
+    <!-- 真文本 sr-only：aria-label 挂 generic 角色在部分读屏组合下会被忽略 -->
+    <span class="visually-hidden">{{ text }}</span>
     <span
       v-if="animated && !prefersReducedMotion"
       aria-hidden="true"
