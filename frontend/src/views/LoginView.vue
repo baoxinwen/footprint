@@ -75,7 +75,7 @@ async function handleRegister() {
   loading.value = true
   try {
     await auth.register(registerForm.value.username, registerForm.value.password)
-    ElMessage.success('注册成功，请登录')
+    ElMessage.success('已注册，请登录')
     activeTab.value = 'login'
     loginForm.value.username = registerForm.value.username
     loginForm.value.password = ''
@@ -114,7 +114,7 @@ async function handleRegister() {
         <h1 class="brand-title">
           <TypewriterText text="旅行足迹" />
         </h1>
-        <p class="brand-subtitle">登录后继续整理你的地图与旅程</p>
+        <p class="brand-subtitle">登录后继续整理你的地图与旅行</p>
       </div>
     </div>
 
@@ -300,7 +300,7 @@ async function handleRegister() {
   letter-spacing: 0.14em;
   color: var(--color-ink-muted);
   text-decoration: none;
-  transition: color var(--dur-fast) ease;
+  transition: color var(--dur-fast) var(--ease-out);
 }
 
 .field-coordinate:hover {
@@ -317,7 +317,7 @@ async function handleRegister() {
 .brand-kicker {
   font-size: var(--text-xs);
   font-weight: var(--fw-semibold);
-  letter-spacing: 0.26em;
+  letter-spacing: 0.22em;
   color: var(--color-accent);
   margin-bottom: var(--space-md);
 }
@@ -415,7 +415,7 @@ async function handleRegister() {
   color: var(--color-ink);
   font-size: var(--text-base);
   font-family: var(--font-sans);
-  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .form-input:focus {
@@ -463,21 +463,13 @@ async function handleRegister() {
   border: 2px solid color-mix(in srgb, var(--color-on-primary) 40%, transparent);
   border-top-color: var(--color-on-primary);
   border-radius: 999px;
-  animation: btnSpin 0.7s linear infinite;
+  animation: btnSpin var(--dur-spin) linear infinite;
 }
 
 @keyframes btnSpin {
   to { transform: rotate(360deg); }
 }
 
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
 
 /* ========== 响应式 ========== */
 @media (max-width: 900px) {

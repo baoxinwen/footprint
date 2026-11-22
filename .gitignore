@@ -74,3 +74,6 @@ test-data.json
 
 # ZCode CLI 工作目录
 .zcode/
+
+# Mimosa 安全门本地工作目录
+.mimosa/

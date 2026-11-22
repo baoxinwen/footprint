@@ -38,6 +38,16 @@ const searchQuery = ref('')
 const searchResults = ref<SearchResult | null>(null)
 const showSearch = ref(false)
 const searchLoading = ref(false)
+// 读屏播报：搜索结果变化对视觉用户可见，读屏用户靠这条常驻 status 区感知
+const searchAnnouncement = computed(() => {
+  if (!searchQuery.value.trim()) return ''
+  if (searchLoading.value) return '搜索中'
+  if (!searchResults.value) return ''
+  const trips = searchResults.value.trips.length
+  const locations = searchResults.value.locations.length
+  if (trips === 0 && locations === 0) return `没有找到匹配「${searchQuery.value.trim()}」的结果`
+  return `找到旅行 ${trips} 个、地点 ${locations} 个`
+})
 const desktopSearchInputRef = ref<HTMLInputElement | null>(null)
 const mobileSearchInputRef = ref<HTMLInputElement | null>(null)
 const desktopSearchButtonRef = ref<HTMLButtonElement | null>(null)
@@ -182,7 +192,8 @@ function cycleTheme() {
           v-model="searchQuery"
           @input="onSearchInput"
           @keydown.escape="closeSearch"
-          placeholder="搜索旅行、地点、城市..."
+          placeholder="搜索旅行、地点..."
+          aria-label="搜索旅行、地点"
           class="search-input"
         />
         <button class="search-close" aria-label="关闭搜索" @click="closeSearch"><el-icon><Close /></el-icon></button>
@@ -206,7 +217,7 @@ function cycleTheme() {
                   <span class="search-item-icon"><el-icon><Suitcase /></el-icon></span>
                   <div class="search-item-info">
                     <div class="search-item-name">{{ trip.title }}</div>
-                    <div class="search-item-desc">{{ trip.start_date }} ~ {{ trip.end_date }}</div>
+                    <div class="search-item-desc">{{ trip.start_date }} 至 {{ trip.end_date }}</div>
                   </div>
                 </button>
               </div>
@@ -228,6 +239,7 @@ function cycleTheme() {
               </div>
             </template>
           </div>
+          <span class="visually-hidden" role="status">{{ searchAnnouncement }}</span>
         </div>
       </div>
     </header>
@@ -261,6 +273,7 @@ function cycleTheme() {
           @input="onSearchInput"
           @keydown.escape="closeSearch"
           placeholder="搜索旅行、地点..."
+          aria-label="搜索旅行、地点"
           class="search-input"
         />
         <button class="search-close" aria-label="关闭搜索" @click="closeSearch"><el-icon><Close /></el-icon></button>
@@ -269,7 +282,7 @@ function cycleTheme() {
           <div v-if="searchLoading" class="search-status">搜索中...</div>
           <div v-else-if="searchResults">
             <div v-if="searchResults.trips.length === 0 && searchResults.locations.length === 0" class="search-status">
-              没有找到匹配结果
+              没有找到匹配「{{ searchQuery.trim() }}」的结果
             </div>
             <template v-else>
               <div v-if="searchResults.trips.length > 0" class="search-group">
@@ -284,7 +297,7 @@ function cycleTheme() {
                   <span class="search-item-icon"><el-icon><Suitcase /></el-icon></span>
                   <div class="search-item-info">
                     <div class="search-item-name">{{ trip.title }}</div>
-                    <div class="search-item-desc">{{ trip.start_date }} ~ {{ trip.end_date }}</div>
+                    <div class="search-item-desc">{{ trip.start_date }} 至 {{ trip.end_date }}</div>
                   </div>
                 </button>
               </div>
@@ -306,6 +319,7 @@ function cycleTheme() {
               </div>
             </template>
           </div>
+          <span class="visually-hidden" role="status">{{ searchAnnouncement }}</span>
         </div>
       </div>
     </div>
@@ -363,7 +377,7 @@ function cycleTheme() {
   border: 0;
   background: transparent;
   font-family: var(--font-serif);
-  font-size: 20px;
+  font-size: var(--text-lg);
   font-weight: var(--fw-bold);
   color: var(--color-ink);
   letter-spacing: 0.06em;
@@ -394,7 +408,7 @@ function cycleTheme() {
   height: 40px;
   padding: 0 16px;
   border-radius: 999px;
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: var(--fw-medium);
   color: var(--color-ink-secondary);
   text-decoration: none;
@@ -403,7 +417,7 @@ function cycleTheme() {
 }
 
 .nav-link .el-icon {
-  font-size: 16px;
+  font-size: var(--text-base);
 }
 
 .nav-link:hover {
@@ -440,7 +454,7 @@ function cycleTheme() {
 }
 
 .nav-btn .el-icon {
-  font-size: 18px;
+  font-size: var(--text-md);
 }
 
 .nav-btn:hover {
@@ -470,7 +484,7 @@ function cycleTheme() {
 
 .mobile-logo {
   font-family: var(--font-serif);
-  font-size: 17px;
+  font-size: var(--text-md);
   font-weight: var(--fw-bold);
   color: var(--color-ink);
   letter-spacing: 0.06em;
@@ -530,7 +544,7 @@ main {
   gap: 3px;
   text-decoration: none;
   color: var(--color-ink-muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
   transition: color var(--dur-base) var(--ease-out);
   position: relative;
 }
@@ -558,7 +572,7 @@ main {
 }
 
 .tab-icon {
-  font-size: 21px;
+  font-size: var(--text-lg);
   line-height: 1;
   display: flex;
 }
@@ -580,7 +594,7 @@ main {
 .search-icon {
   position: absolute;
   left: 14px;
-  font-size: 17px;
+  font-size: var(--text-md);
   z-index: 1;
   color: var(--color-ink-muted);
   pointer-events: none;
@@ -592,14 +606,14 @@ main {
   padding: 10px 48px;
   border: 1px solid var(--color-border);
   border-radius: 999px;
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-family: var(--font-sans);
   outline: none;
   background: var(--color-canvas);
   color: var(--color-ink);
-  transition: border-color var(--dur-base) ease,
-    background-color var(--dur-base) ease,
-    box-shadow var(--dur-base) ease;
+  transition: border-color var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
 }
 
 .search-bar .search-input:focus {
@@ -622,11 +636,11 @@ main {
   justify-content: center;
   border: none;
   background: none;
-  font-size: 16px;
+  font-size: var(--text-base);
   color: var(--color-ink-muted);
   cursor: pointer;
   border-radius: 999px;
-  transition: color var(--dur-fast) ease, background-color var(--dur-fast) ease;
+  transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
 }
 
 .search-close:hover {
@@ -641,6 +655,7 @@ main {
   right: 0;
   max-height: 440px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -657,11 +672,10 @@ main {
 
 .search-group-title {
   padding: 14px 18px 6px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: var(--fw-semibold);
   color: var(--color-ink-muted);
   letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 
 .search-item {
@@ -677,7 +691,7 @@ main {
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color var(--dur-fast) ease;
+  transition: background-color var(--dur-fast) var(--ease-out);
 }
 
 .search-item:hover {
@@ -692,7 +706,7 @@ main {
 
 .search-item-icon {
   display: inline-flex;
-  font-size: 18px;
+  font-size: var(--text-md);
   color: var(--color-primary);
   flex-shrink: 0;
   width: 24px;
@@ -705,7 +719,7 @@ main {
 }
 
 .search-item-name {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: var(--fw-medium);
   color: var(--color-ink);
   white-space: nowrap;
@@ -714,7 +728,7 @@ main {
 }
 
 .search-item-desc {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-muted);
   margin-top: 2px;
 }

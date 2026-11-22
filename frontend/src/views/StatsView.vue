@@ -74,12 +74,12 @@ const statCards = [
     <header class="page-header">
       <div>
         <p class="page-kicker">数据志</p>
-        <h2 class="page-title">统计分析</h2>
+        <h1 class="page-title">统计分析</h1>
         <p class="page-desc">用数据回顾你的旅行足迹</p>
       </div>
     </header>
 
-    <div v-if="loading" class="loading-spin" aria-label="加载中"></div>
+    <div v-if="loading" class="loading-spin" role="status"><span class="visually-hidden">加载中</span></div>
 
     <!-- 加载失败 -->
     <section v-else-if="loadError" class="error-panel" role="alert">
@@ -92,7 +92,7 @@ const statCards = [
     <EmptyState
       v-else-if="overview.trip_count === 0"
       icon="stats"
-      title="暂无统计数据"
+      title="还没有统计数据"
       description="记录你的第一次旅行，这里将展示丰富的统计图表"
       actionText="创建旅行"
       @action="router.push('/trips/new')"
@@ -106,7 +106,7 @@ const statCards = [
           :key="card.key"
           type="button"
           class="stat-card-link stagger-item"
-          :style="{ animationDelay: `${index * 60}ms` }"
+          :style="{ animationDelay: `${index * 40}ms` }"
           :aria-label="`${card.label}${overview[card.key as keyof typeof overview]}，查看旅行`"
           @click="card.action"
         >
@@ -246,7 +246,7 @@ const statCards = [
   border: 3px solid var(--color-border);
   border-top-color: var(--color-primary);
   border-radius: 999px;
-  animation: spin 0.8s linear infinite;
+  animation: spin var(--dur-spin) linear infinite;
 }
 
 @keyframes spin {
@@ -324,7 +324,7 @@ const statCards = [
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color var(--dur-fast) ease;
+  transition: background-color var(--dur-fast) var(--ease-out);
 }
 
 .bar-row:hover {
@@ -352,7 +352,7 @@ const statCards = [
   height: 100%;
   border-radius: 6px;
   background: linear-gradient(90deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 70%, var(--color-accent)));
-  transition: width 600ms var(--ease-out);
+  transition: width var(--dur-grow) var(--ease-out);
 }
 
 .bar-value {
@@ -366,7 +366,7 @@ const statCards = [
   font-size: var(--text-xs);
   color: var(--color-ink-muted);
   white-space: nowrap;
-  transition: color var(--dur-fast) ease;
+  transition: color var(--dur-fast) var(--ease-out);
 }
 
 .bar-row:hover .bar-action {

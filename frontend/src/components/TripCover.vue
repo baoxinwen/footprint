@@ -76,7 +76,7 @@ const props = withDefaults(
 .fallback-char {
   position: relative;
   font-family: var(--font-serif);
-  font-size: 44px;
+  font-size: var(--text-2xl);
   font-weight: var(--fw-bold);
   color: var(--color-on-primary);
   opacity: 0.92;

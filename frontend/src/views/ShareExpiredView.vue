@@ -50,7 +50,7 @@ const router = useRouter()
   border-radius: var(--radius-md);
   background: var(--color-surface);
   color: var(--color-danger);
-  font-size: 26px;
+  font-size: var(--text-lg);
 }
 
 .link-break {
@@ -67,7 +67,7 @@ const router = useRouter()
   color: var(--color-danger);
   font-size: var(--text-xs);
   font-weight: var(--fw-semibold);
-  letter-spacing: 0.18em;
+  letter-spacing: 0.22em;
 }
 
 .expired-content h1 {

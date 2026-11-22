@@ -15,7 +15,8 @@ export function downloadBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url)
 }
 
-/** 平滑滚动到指定元素（锚点导航共用）。 */
+/** 平滑滚动到指定元素（锚点导航共用）；reduced-motion 用户直接跳转（CSS 降级管不到 JS 滚动）。 */
 export function scrollToSection(id: string): void {
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  document.getElementById(id)?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' })
 }

@@ -37,7 +37,7 @@ async function loadAccount() {
     const { data } = await request.get('/account/info')
     userInfo.value = data
   } catch {
-    ElMessage.error('加载账号信息失败')
+    ElMessage.error('加载账号信息失败，请稍后重试')
   }
 }
 
@@ -48,7 +48,7 @@ async function loadShares() {
     const { data } = await getShares()
     shares.value = data
   } catch {
-    sharesError.value = '分享链接加载失败，请检查网络后重试'
+    sharesError.value = '分享链接加载失败，请检查网络连接后重新加载'
   } finally {
     sharesLoading.value = false
   }
@@ -102,8 +102,8 @@ async function handleRotateShare(share: ShareListItem) {
   try {
     await ElMessageBox.confirm(
       '轮换后旧链接将立即失效，已经收到旧链接的人将无法继续查看。',
-      '轮换分享链接',
-      { type: 'warning', confirmButtonText: '确认轮换', cancelButtonText: '取消' },
+      `轮换「${share.trip_title}」的分享链接？`,
+      { type: 'warning', confirmButtonText: '轮换链接', cancelButtonText: '取消' },
     )
   } catch {
     return
@@ -130,8 +130,8 @@ async function handleRevokeShare(share: ShareListItem) {
   try {
     await ElMessageBox.confirm(
       '撤销后此链接将立即失效，且无法恢复。',
-      '撤销分享链接',
-      { type: 'warning', confirmButtonText: '确认撤销', cancelButtonText: '取消' },
+      `撤销「${share.trip_title}」的分享链接？`,
+      { type: 'warning', confirmButtonText: '撤销链接', cancelButtonText: '取消' },
     )
   } catch {
     return
@@ -165,10 +165,10 @@ async function handleChangePassword() {
   passwordLoading.value = true
   try {
     await changePassword(form.value.current_password, form.value.new_password, form.value.confirm_password)
-    ElMessage.success('密码修改成功，请重新登录')
+    ElMessage.success('密码已修改，请重新登录')
     auth.logout()
   } catch {
-    ElMessage.error('密码修改失败')
+    ElMessage.error('密码修改失败，请稍后重试')
   } finally {
     passwordLoading.value = false
   }
@@ -189,7 +189,7 @@ async function exportAll(format: 'json' | 'zip') {
     const response = await request.get(url, { responseType: 'blob' })
     downloadBlob(new Blob([response.data]), filename)
   } catch {
-    ElMessage.error('导出失败')
+    ElMessage.error('导出失败，请稍后重试')
   } finally {
     exportingFormat.value = ''
   }
@@ -204,9 +204,9 @@ async function handleImport(event: Event) {
     const formData = new FormData()
     formData.append('file', file)
     await request.post('/trips/import', formData)
-    ElMessage.success('导入成功')
+    ElMessage.success('已导入')
   } catch {
-    ElMessage.error('导入失败')
+    ElMessage.error('导入失败，请检查文件后重试')
   } finally {
     importLoading.value = false
     input.value = ''
@@ -230,7 +230,7 @@ const railItems = [
   <div class="settings-page">
     <header class="page-header">
       <p class="page-kicker">偏好与数据</p>
-      <h2 class="page-title">设置</h2>
+      <h1 class="page-title">设置</h1>
       <p class="page-desc">管理账号、分享链接、数据备份与外观</p>
     </header>
 
@@ -276,10 +276,10 @@ const railItems = [
           <div v-if="sharesLoading" class="share-state" aria-live="polite">正在加载分享链接...</div>
           <div v-else-if="sharesError" class="share-state share-state-error" role="alert">
             <span>{{ sharesError }}</span>
-            <button type="button" class="text-action" data-testid="retry-shares" @click="loadShares">重试</button>
+            <button type="button" class="text-action" data-testid="retry-shares" @click="loadShares">重新加载</button>
           </div>
           <div v-else-if="shares.length === 0" class="share-state share-state-empty">
-            <p>暂无有效的分享链接</p>
+            <p>还没有分享链接</p>
             <p class="share-state-hint">在旅行详情页点击「分享」按钮即可创建，链接 30 天内有效</p>
           </div>
           <div v-else class="share-list">
@@ -374,7 +374,8 @@ const railItems = [
                 <el-icon v-if="!importLoading"><Upload /></el-icon>
                 <span v-if="importLoading">导入中...</span>
                 <span v-else>选择文件</span>
-                <input type="file" accept=".json" @change="handleImport" style="display: none" />
+                <!-- clip 隐藏而非 display:none：input 保持可聚焦，「选择文件」键盘可达（label :focus-within 高亮） -->
+                <input type="file" accept=".json" class="visually-hidden" @change="handleImport" />
               </label>
             </div>
           </div>
@@ -383,7 +384,7 @@ const railItems = [
         <!-- 外观设置 -->
         <section id="sec-appearance" class="settings-section">
           <h3 class="section-title">外观设置</h3>
-          <div class="theme-options">
+          <div class="theme-options" role="radiogroup" aria-label="主题模式">
             <label
               v-for="option in [
                 { value: 'auto', label: '跟随系统', desc: '自动匹配系统深色/浅色模式', icon: 'Monitor' },
@@ -417,16 +418,16 @@ const railItems = [
           <h3 class="section-title">修改密码</h3>
           <form class="password-form" @submit.prevent="handleChangePassword">
             <div class="form-group">
-              <label class="form-label">当前密码</label>
-              <input v-model="form.current_password" type="password" class="form-input" autocomplete="current-password" />
+              <label class="form-label" for="pw-current">当前密码</label>
+              <input id="pw-current" v-model="form.current_password" type="password" class="form-input" autocomplete="current-password" />
             </div>
             <div class="form-group">
-              <label class="form-label">新密码</label>
-              <input v-model="form.new_password" type="password" class="form-input" placeholder="至少6位" autocomplete="new-password" />
+              <label class="form-label" for="pw-new">新密码</label>
+              <input id="pw-new" v-model="form.new_password" type="password" class="form-input" placeholder="至少6位" autocomplete="new-password" />
             </div>
             <div class="form-group">
-              <label class="form-label">确认新密码</label>
-              <input v-model="form.confirm_password" type="password" class="form-input" autocomplete="new-password" />
+              <label class="form-label" for="pw-confirm">确认新密码</label>
+              <input id="pw-confirm" v-model="form.confirm_password" type="password" class="form-input" autocomplete="new-password" />
             </div>
             <button type="submit" class="submit-btn" :disabled="passwordLoading">
               <span v-if="passwordLoading" class="btn-loading"></span>
@@ -524,7 +525,7 @@ const railItems = [
   font-size: var(--text-sm);
   text-align: left;
   cursor: pointer;
-  transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease, background-color var(--dur-fast) ease;
+  transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
 }
 
 .section-rail button:hover {
@@ -581,7 +582,7 @@ const railItems = [
 }
 
 .section-heading-icon {
-  font-size: 20px;
+  font-size: var(--text-lg);
   color: var(--color-primary);
   flex-shrink: 0;
 }
@@ -731,7 +732,7 @@ const railItems = [
   color: var(--color-ink-secondary);
   font-size: var(--text-xs);
   cursor: pointer;
-  transition: color var(--dur-fast) ease, background-color var(--dur-fast) ease;
+  transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
 }
 
 .share-action-button:hover:not(:disabled) {
@@ -741,7 +742,7 @@ const railItems = [
 
 .share-copied {
   color: var(--color-primary);
-  transition: opacity var(--dur-base) ease;
+  transition: opacity var(--dur-base) var(--ease-out);
 }
 
 .share-copied.is-fading {
@@ -802,7 +803,7 @@ const railItems = [
   color: var(--color-ink-secondary);
   font-size: var(--text-sm);
   cursor: pointer;
-  transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease, background-color var(--dur-fast) ease;
+  transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
   flex-shrink: 0;
 }
 
@@ -810,6 +811,15 @@ const railItems = [
   color: var(--color-primary);
   border-color: var(--color-primary);
   background: var(--color-primary-soft);
+}
+
+/* 导入文件的 input 以 clip 方式隐藏在 label 内，键盘聚焦时给 label 双环焦点 */
+.action-btn:focus-within {
+  border-color: transparent;
+  background: var(--color-surface);
+  box-shadow:
+    inset 0 0 0 1px var(--color-primary),
+    0 0 0 3px color-mix(in srgb, var(--color-primary) 14%, transparent);
 }
 
 .action-btn:disabled {
@@ -832,7 +842,7 @@ const railItems = [
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: border-color var(--dur-fast) ease, background-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+  transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .theme-option:hover {
@@ -847,7 +857,7 @@ const railItems = [
 
 .theme-icon {
   display: inline-flex;
-  font-size: 20px;
+  font-size: var(--text-lg);
   color: var(--color-ink-secondary);
 }
 
@@ -901,7 +911,7 @@ const railItems = [
   color: var(--color-ink);
   font-size: var(--text-base);
   font-family: var(--font-sans);
-  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .form-input:focus {
@@ -924,7 +934,7 @@ const railItems = [
   font-size: var(--text-base);
   font-weight: var(--fw-medium);
   cursor: pointer;
-  transition: background-color var(--dur-base) ease, box-shadow var(--dur-base) ease;
+  transition: background-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
 }
 
 .submit-btn:hover:not(:disabled) {
@@ -943,7 +953,7 @@ const railItems = [
   border: 2px solid color-mix(in srgb, var(--color-on-primary) 40%, transparent);
   border-top-color: var(--color-on-primary);
   border-radius: 999px;
-  animation: btnSpin 0.7s linear infinite;
+  animation: btnSpin var(--dur-spin) linear infinite;
 }
 
 @keyframes btnSpin {

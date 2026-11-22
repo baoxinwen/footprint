@@ -256,7 +256,7 @@ describe('TripFormView', () => {
     await flushPromises()
 
     expect((wrapper.vm as any).poiResults).toEqual([])
-    expect(ElMessage.warning).toHaveBeenCalledWith('未找到相关地点')
+    expect(ElMessage.warning).toHaveBeenCalledWith('未找到与「不存在的地点xyz」相关的地点，换个关键词试试')
   })
 
   it('surfaces INVALID_USER_SCODE with a configuration hint', async () => {
@@ -289,7 +289,7 @@ describe('TripFormView', () => {
     ;(wrapper.vm as any).searchPoi()
 
     expect((wrapper.vm as any).poiResults).toEqual([])
-    expect(ElMessage.error).toHaveBeenCalledWith('地图搜索失败：SOME_AMAP_ERROR')
+    expect(ElMessage.error).toHaveBeenCalledWith('地图搜索失败（高德返回 SOME_AMAP_ERROR），请检查 Key 与安全密钥配置')
   })
 
   it('does not persist a newly added POI when leaving the edit form', async () => {

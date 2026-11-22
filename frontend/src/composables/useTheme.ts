@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useDark, useToggle } from '@vueuse/core'
+import { THEME_MODE_STORAGE_KEY } from '../utils/storageKeys'
 
 const isDark = useDark({
   storageKey: 'theme',
@@ -8,7 +9,7 @@ const isDark = useDark({
 })
 const toggleDark = useToggle(isDark)
 
-const themeMode = ref(localStorage.getItem('theme-mode') || 'auto')
+const themeMode = ref(localStorage.getItem(THEME_MODE_STORAGE_KEY) || 'auto')
 
 // Listen for system theme changes when in auto mode
 const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
@@ -29,7 +30,7 @@ if (themeMode.value === 'auto' && mediaQuery.matches !== isDark.value) {
 export function useTheme() {
   function setTheme(mode: string) {
     themeMode.value = mode
-    localStorage.setItem('theme-mode', mode)
+    localStorage.setItem(THEME_MODE_STORAGE_KEY, mode)
     if (mode === 'dark') {
       if (!isDark.value) toggleDark()
     } else if (mode === 'light') {

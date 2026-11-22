@@ -53,7 +53,7 @@ describe('StatsView', () => {
     })
     await flushPromises()
     // When no trips, shows empty state
-    expect(wrapper.text()).toContain('暂无统计数据')
+    expect(wrapper.text()).toContain('还没有统计数据')
   })
 
   it('displays trip count when data exists', async () => {

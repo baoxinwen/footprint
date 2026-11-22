@@ -10,6 +10,7 @@ import EmptyState from '../components/EmptyState.vue'
 import PhotoViewer from '../components/PhotoViewer.vue'
 import type { CityMarker, MapStats, TripRoute, PhotoMapMarker } from '../types'
 import { acquireImageResource, type ImageResource } from '../utils/authenticatedImage'
+import { MAP_STYLE_STORAGE_KEY } from '../utils/storageKeys'
 
 const router = useRouter()
 const stats = ref<MapStats>({ trip_count: 0, location_count: 0, city_count: 0, province_count: 0 })
@@ -41,12 +42,19 @@ const mapStyles = [
   { value: 'darkblue', label: '靛青蓝' },
   { value: 'wine', label: '酱紫' },
 ]
-const currentStyle = ref(localStorage.getItem('mapStyle') || 'normal')
+const currentStyle = ref(localStorage.getItem(MAP_STYLE_STORAGE_KEY) || 'normal')
 
 function escapeHtml(str: string): string {
   return str.replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[c] || c))
+}
+
+// 高德 canvas API 吃不进 CSS 变量，起终点标记色在绘制时从 :root 读一次令牌值；
+// （HTML 字符串内容仍可直接用 var(--color-*)，如城市标记与照片失败兜底）
+function readTokenColor(name: string, fallback: string): string {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return value || fallback
 }
 
 // Layer toggles
@@ -156,7 +164,7 @@ async function onStyleChange(style: string) {
     return
   }
   currentStyle.value = style
-  localStorage.setItem('mapStyle', style)
+  localStorage.setItem(MAP_STYLE_STORAGE_KEY, style)
 
   // 保存当前视角
   const center = map.value ? map.value.getCenter() : null
@@ -329,18 +337,26 @@ function drawRoute(route: TripRoute) {
       radius: isFirst || isLast ? 8 : 6,
       strokeColor: '#fff',
       strokeWeight: isFirst || isLast ? 3 : 2,
-      fillColor: isFirst ? '#1F5C46' : isLast ? '#C64B36' : route.color,
+      fillColor: isFirst
+      ? readTokenColor('--color-primary', '#1f5c46')
+      : isLast
+        ? readTokenColor('--color-route-end', '#c64b36')
+        : route.color,
       fillOpacity: 1,
     })
     map.value.add(marker)
     mapOverlays.push(marker)
 
-    // 所有点位都显示名称标签
-    const bgColor = isFirst ? '#1F5C46' : isLast ? '#C64B36' : route.color
+    // 所有点位都显示名称标签（与上方 CircleMarker 同源取色）
+    const bgColor = isFirst
+      ? readTokenColor('--color-primary', '#1f5c46')
+      : isLast
+        ? readTokenColor('--color-route-end', '#c64b36')
+        : route.color
     const prefix = isFirst ? '起点' : isLast ? '终点' : `${idx + 1}`
     const label = new AMapRef.Marker({
       position: [loc.longitude, loc.latitude],
-      content: `<div style="background: ${bgColor}; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,0.3); font-weight: ${isFirst || isLast ? '600' : '400'};">${escapeHtml(prefix)}: ${escapeHtml(loc.name)}</div>`,
+      content: `<div style="background: ${bgColor}; color: white; padding: 2px 6px; border-radius: 4px; font-size: var(--text-xs); white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,0.3); font-weight: ${isFirst || isLast ? '600' : '400'};">${escapeHtml(prefix)}: ${escapeHtml(loc.name)}</div>`,
       offset: new AMapRef.Pixel(-30, -30),
     })
     map.value.add(label)
@@ -394,7 +410,7 @@ async function togglePhotoMode() {
         photoMarkers.value = data
       } catch {
         if (requestId !== photoModeRequestId || !photoMode.value || disposed) return
-        ElMessage.error('加载照片数据失败')
+        ElMessage.error('加载照片数据失败，请稍后重试')
         photoMode.value = false
         return
       }
@@ -446,7 +462,7 @@ async function renderPhotoMarkers() {
     else failedCount += 1
     const markerContent = resource
       ? `<img src="${escapeHtml(resource.src)}" alt="" style="width:100%;height:100%;object-fit:cover;" />`
-      : '<span role="img" aria-label="照片加载失败" style="display:flex;width:100%;height:100%;align-items:center;justify-content:center;background:#e5ebe7;color:#59635e;font-size:11px;">失败</span>'
+      : '<span role="img" aria-label="照片加载失败" style="display:flex;width:100%;height:100%;align-items:center;justify-content:center;background:var(--color-surface-muted);color:var(--color-ink-muted);font-size:11px;">失败</span>'
     const marker = new AMapRef.Marker({
       position: [pm.longitude, pm.latitude],
       content: `<div style="width:40px;height:40px;border:2px solid #fff;border-radius:6px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.3);cursor:pointer;">${markerContent}</div>`,
@@ -488,7 +504,13 @@ onUnmounted(() => {
 
 <template>
   <div class="map-page">
-    <div id="map-container" class="map-container"></div>
+    <!-- 地图 canvas 对读屏不可感知：role=application + 概览描述；文本等价物是下方统计面板 -->
+    <div
+      id="map-container"
+      class="map-container"
+      role="application"
+      :aria-label="`旅行足迹地图：${stats.trip_count} 次旅行、${stats.city_count} 座城市、${stats.location_count} 个地点，交互控件见统计面板`"
+    ></div>
 
     <!-- Unified control panel -->
     <div class="control-panel" :class="{ collapsed: !showStats }">
@@ -522,8 +544,8 @@ onUnmounted(() => {
 
         <!-- Map style -->
         <div class="panel-section">
-          <div class="section-label">地图样式</div>
-          <el-select v-model="currentStyle" @change="onStyleChange" size="small" style="width: 100%">
+          <div class="section-label" id="map-style-label">地图样式</div>
+          <el-select v-model="currentStyle" aria-labelledby="map-style-label" @change="onStyleChange" size="small" style="width: 100%">
             <el-option v-for="s in mapStyles" :key="s.value" :label="s.label" :value="s.value" />
           </el-select>
         </div>
@@ -532,25 +554,25 @@ onUnmounted(() => {
         <div class="panel-section">
           <div class="section-label">图层</div>
           <div class="layer-toggles">
-            <button :class="['layer-btn', { active: showSatellite }]" @click="toggleSatellite">卫星</button>
-            <button :class="['layer-btn', { active: showRoadNet }]" @click="toggleRoadNet">路网</button>
-            <button :class="['layer-btn', { active: showTraffic }]" @click="toggleTraffic">路况</button>
+            <button :class="['layer-btn', { active: showSatellite }]" :aria-pressed="showSatellite" @click="toggleSatellite">卫星</button>
+            <button :class="['layer-btn', { active: showRoadNet }]" :aria-pressed="showRoadNet" @click="toggleRoadNet">路网</button>
+            <button :class="['layer-btn', { active: showTraffic }]" :aria-pressed="showTraffic" @click="toggleTraffic">路况</button>
           </div>
         </div>
 
         <!-- Route filter -->
         <div class="panel-section">
-          <div class="section-label">路线筛选</div>
-          <el-select v-model="selectedTripId" @change="onRouteChange" @focus="loadRoutes" size="small" clearable placeholder="查看路线" style="width: 100%">
+          <div class="section-label" id="route-filter-label">路线筛选</div>
+          <el-select v-model="selectedTripId" aria-labelledby="route-filter-label" @change="onRouteChange" @focus="loadRoutes" size="small" clearable placeholder="查看路线" style="width: 100%">
             <el-option v-for="r in routes" :key="r.trip_id" :label="r.title" :value="r.trip_id" />
           </el-select>
         </div>
 
         <!-- Photo mode -->
         <div class="panel-section">
-          <button :class="['photo-mode-btn', { active: photoMode }]" @click="togglePhotoMode">
+          <button :class="['photo-mode-btn', { active: photoMode }]" :aria-pressed="photoMode" @click="togglePhotoMode">
             <el-icon><Camera /></el-icon>
-            <span>{{ photoMode ? '退出照片模式' : '照片地图' }}</span>
+            <span>{{ photoMode ? '退出照片地图' : '照片地图' }}</span>
           </button>
         </div>
       </template>
@@ -560,7 +582,8 @@ onUnmounted(() => {
     <div v-if="statsLoaded && stats.trip_count === 0" class="empty-overlay">
       <EmptyState
         icon="map"
-        title="标记你的第一个旅行目的地"
+        title="还没有旅行记录"
+        description="创建旅行并添加地点后，足迹会标在地图上"
         actionText="创建旅行"
         @action="router.push('/trips/new')"
       />
@@ -624,7 +647,7 @@ onUnmounted(() => {
   background: transparent;
   text-align: left;
   user-select: none;
-  transition: background-color var(--dur-fast) ease;
+  transition: background-color var(--dur-fast) var(--ease-out);
 }
 
 .panel-header:hover {
@@ -632,7 +655,7 @@ onUnmounted(() => {
 }
 
 .toggle-icon {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-muted);
 }
 
@@ -652,7 +675,7 @@ onUnmounted(() => {
 
 .stat-value {
   font-family: var(--font-serif);
-  font-size: 22px;
+  font-size: var(--text-lg);
   font-weight: var(--fw-bold);
   line-height: 1.2;
   color: var(--color-primary);
@@ -660,7 +683,7 @@ onUnmounted(() => {
 }
 
 .stat-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-ink-muted);
   margin-top: 2px;
   letter-spacing: 0.08em;
@@ -678,7 +701,7 @@ onUnmounted(() => {
 }
 
 .section-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: var(--fw-semibold);
   color: var(--color-ink-muted);
   letter-spacing: 0.1em;
@@ -699,11 +722,11 @@ onUnmounted(() => {
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-secondary);
   cursor: pointer;
   text-align: center;
-  transition: border-color var(--dur-fast) ease, background-color var(--dur-fast) ease, color var(--dur-fast) ease;
+  transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 
 .layer-btn:hover {
@@ -736,7 +759,7 @@ onUnmounted(() => {
   font-weight: var(--fw-medium);
   color: var(--color-ink-secondary);
   cursor: pointer;
-  transition: border-color var(--dur-fast) ease, background-color var(--dur-fast) ease, color var(--dur-fast) ease;
+  transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 
 .photo-mode-btn:hover {
@@ -752,7 +775,7 @@ onUnmounted(() => {
 }
 
 .photo-mode-btn .el-icon {
-  font-size: 17px;
+  font-size: var(--text-md);
 }
 
 /* 空状态 */
@@ -775,6 +798,7 @@ onUnmounted(() => {
     width: auto;
     max-height: calc(100dvh - 180px);
     overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .control-panel.collapsed {
@@ -787,7 +811,7 @@ onUnmounted(() => {
   }
 
   .stat-value {
-    font-size: 18px;
+    font-size: var(--text-md);
   }
 
   .panel-section {

@@ -73,10 +73,10 @@ request.interceptors.response.use(
       } else if (status === 429) {
         if (!silent) ElMessage.error(extractDetail(data) ?? '操作过于频繁，请稍后再试')
       } else {
-        if (!silent) ElMessage.error(extractDetail(data) ?? '请求失败')
+        if (!silent) ElMessage.error(extractDetail(data) ?? '请求失败，请稍后重试')
       }
     } else {
-      ElMessage.error('网络错误')
+      ElMessage.error('网络连接失败，请检查网络后重试')
     }
     return Promise.reject(error)
   }

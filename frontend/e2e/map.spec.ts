@@ -10,7 +10,7 @@ async function registerAndLogin(page: any): Promise<string> {
   await page.fill('input[placeholder="至少6位"]', TEST_PASSWORD)
   await page.fill('input[placeholder="再次输入密码"]', TEST_PASSWORD)
   await page.locator('.submit-btn').click()
-  await expect(page.locator('.el-message')).toContainText('注册成功')
+  await expect(page.locator('.el-message')).toContainText('已注册')
 
   await page.locator('.tab-btn', { hasText: '登录' }).click()
   await page.fill('input[placeholder="请输入用户名"]', username)
@@ -33,7 +33,7 @@ test.describe('地图首页', () => {
 
   test('空状态引导显示', async ({ page }) => {
     await registerAndLogin(page)
-    await expect(page.locator('text=标记你的第一个旅行目的地')).toBeVisible()
+    await expect(page.locator('text=还没有旅行记录')).toBeVisible()
   })
 })
 

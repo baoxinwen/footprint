@@ -107,7 +107,7 @@ describe('Request Module', () => {
     await expect(
       rejectResponse({ response: { status: 500, data: {} }, config: { url: '/x' } })
     ).rejects.toBeTruthy()
-    expect(errorMessageMock).toHaveBeenLastCalledWith('请求失败')
+    expect(errorMessageMock).toHaveBeenLastCalledWith('请求失败，请稍后重试')
   })
 
   it('treats aborted requests as silent rejections, not network errors', async () => {

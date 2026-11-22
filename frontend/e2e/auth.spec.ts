@@ -19,7 +19,7 @@ test.describe('用户认证流程', () => {
     await page.fill('input[placeholder="再次输入密码"]', TEST_PASSWORD)
     await page.locator('.submit-btn').click()
 
-    await expect(page.locator('.el-message')).toContainText('注册成功')
+    await expect(page.locator('.el-message')).toContainText('已注册')
   })
 
   test('登录成功后跳转到地图页', async ({ page }) => {
@@ -32,7 +32,7 @@ test.describe('用户认证流程', () => {
     await page.fill('input[placeholder="至少6位"]', TEST_PASSWORD)
     await page.fill('input[placeholder="再次输入密码"]', TEST_PASSWORD)
     await page.locator('.submit-btn').click()
-    await expect(page.locator('.el-message')).toContainText('注册成功')
+    await expect(page.locator('.el-message')).toContainText('已注册')
 
     // 切换到登录
     await page.locator('.tab-btn', { hasText: '登录' }).click()

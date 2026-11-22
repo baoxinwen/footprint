@@ -15,6 +15,6 @@ test.describe('统计页面', () => {
     await page.goto('/stats')
 
     // 页面应正常加载
-    await expect(page.locator('h2')).toBeVisible()
+    await expect(page.locator('h1')).toBeVisible()
   })
 })

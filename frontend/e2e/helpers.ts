@@ -16,7 +16,7 @@ export async function registerAndLogin(page: Page): Promise<string> {
   await page.locator('.submit-btn').click()
   const registerResponse = await registerResponsePromise
   expect(registerResponse.status(), await registerResponse.text()).toBe(200)
-  await expect(page.locator('.el-message')).toContainText('注册成功')
+  await expect(page.locator('.el-message')).toContainText('已注册')
 
   await page.locator('.tab-btn', { hasText: '登录' }).click()
   await page.fill('input[placeholder="请输入用户名"]', username)

@@ -199,7 +199,7 @@ describe('SettingsView', () => {
 
     await vi.waitFor(() => {
       expect(revokeShare).toHaveBeenCalledWith('share-token-1')
-      expect(wrapper.text()).toContain('暂无有效的分享链接')
+      expect(wrapper.text()).toContain('还没有分享链接')
       expect(ElMessage.success).toHaveBeenCalledWith('分享链接已撤销')
     })
   })

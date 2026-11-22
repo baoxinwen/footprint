@@ -272,9 +272,9 @@ function durationLabel(start: string, end: string) {
       </span>
     </div>
 
-    <p v-if="search && !loading" class="search-result" aria-live="polite">
-      找到 <strong>{{ total }}</strong> 条旅行记录
-    </p>
+    <!-- 常驻 live 区（sr-only）：随内容插入挂载的 polite 区重复播报不可靠；可见计数条仍走条件渲染 -->
+    <span class="visually-hidden" aria-live="polite">{{ search && !loading ? `找到 ${total} 条旅行记录` : '' }}</span>
+    <p v-if="search && !loading" class="search-result">找到 <strong>{{ total }}</strong> 条旅行记录</p>
 
     <div class="trips-container">
       <!-- 加载骨架 -->
@@ -440,7 +440,7 @@ function durationLabel(start: string, end: string) {
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 15px;
+  font-size: var(--text-base);
   color: var(--color-ink-muted);
   pointer-events: none;
 }
@@ -456,7 +456,7 @@ function durationLabel(start: string, end: string) {
   font-size: var(--text-sm);
   font-family: var(--font-sans);
   outline: none;
-  transition: border-color var(--dur-base) ease, box-shadow var(--dur-base) ease;
+  transition: border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
 }
 
 .search-input::placeholder {
@@ -488,8 +488,8 @@ function durationLabel(start: string, end: string) {
   background: var(--color-surface);
   color: var(--color-ink-secondary);
   cursor: pointer;
-  transition: color var(--dur-fast) ease, background-color var(--dur-fast) ease,
-    border-color var(--dur-fast) ease;
+  transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
 }
 
 .icon-btn:hover {
@@ -510,8 +510,8 @@ function durationLabel(start: string, end: string) {
   font-size: var(--text-sm);
   font-weight: var(--fw-medium);
   cursor: pointer;
-  transition: color var(--dur-fast) ease, background-color var(--dur-fast) ease,
-    border-color var(--dur-fast) ease;
+  transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
 }
 
 .filter-toggle:hover,
@@ -531,7 +531,7 @@ function durationLabel(start: string, end: string) {
   border-radius: 999px;
   background: var(--color-primary);
   color: var(--color-on-primary);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: var(--fw-semibold);
 }
 
@@ -553,10 +553,15 @@ function durationLabel(start: string, end: string) {
   font-family: var(--font-sans);
   cursor: pointer;
   appearance: none;
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a938c' stroke-width='2.4'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  /* 下拉箭头用弱文字色（浅 #6b6b66）；data URI 吃不进 CSS 变量，暗色用 :global 覆盖 */
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b6b66' stroke-width='2.4'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
-  transition: border-color var(--dur-fast) ease;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+:global(html.dark) .filter-select {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2385857e' stroke-width='2.4'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 }
 
 .sort-select:hover {
@@ -611,6 +616,16 @@ function durationLabel(start: string, end: string) {
   font-family: var(--font-sans);
 }
 
+/* 原生筛选控件：全局已没收 outline，这里按铁律 2 补双环焦点（main.css .el-input__wrapper 母本） */
+.filter-select:focus-visible,
+.filter-input:focus-visible {
+  border-color: transparent;
+  background: var(--color-surface);
+  box-shadow:
+    inset 0 0 0 1px var(--color-primary),
+    0 0 0 3px color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+
 .filter-actions {
   justify-content: flex-end;
   min-width: auto;
@@ -626,12 +641,13 @@ function durationLabel(start: string, end: string) {
   color: var(--color-ink-secondary);
   font-size: var(--text-sm);
   cursor: pointer;
-  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 
+/* 清除筛选是非破坏性操作，不用 danger 语义色 */
 .clear-btn:hover:not(:disabled) {
-  background: var(--color-danger-soft);
-  color: var(--color-danger);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
 }
 
 .clear-btn:disabled {
@@ -639,9 +655,13 @@ function durationLabel(start: string, end: string) {
   cursor: default;
 }
 
-.filter-slide-enter-active,
-.filter-slide-leave-active {
+.filter-slide-enter-active {
   transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+
+/* 出场更快更轻（与 main.css fade-slide 同一不对称习语） */
+.filter-slide-leave-active {
+  transition: opacity var(--dur-fast) ease-in, transform var(--dur-fast) ease-in;
 }
 
 .filter-slide-enter-from,
@@ -694,7 +714,7 @@ function durationLabel(start: string, end: string) {
 }
 
 .filter-tag .el-icon {
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 /* ========== 搜索结果计数 ========== */
@@ -758,7 +778,7 @@ function durationLabel(start: string, end: string) {
 }
 
 .trip-card:hover .card-cover :deep(.cover-img) {
-  transform: scale(1.045);
+  transform: scale(1.04);
 }
 
 .card-duration {
@@ -841,7 +861,7 @@ function durationLabel(start: string, end: string) {
 }
 
 .loc-count .el-icon {
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 /* ========== 加载失败面板 ========== */
@@ -893,7 +913,7 @@ function durationLabel(start: string, end: string) {
   color: var(--color-ink-secondary);
   font-size: var(--text-sm);
   cursor: pointer;
-  transition: border-color var(--dur-fast) ease, color var(--dur-fast) ease;
+  transition: border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 
 .page-btn:hover:not(:disabled) {

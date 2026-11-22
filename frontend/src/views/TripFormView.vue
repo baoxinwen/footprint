@@ -206,7 +206,7 @@ onMounted(async () => {
     placeSearchInstance = new AMapInstance.PlaceSearch({ pageSize: 10, pageIndex: 1 })
     geocoderInstance = new AMapInstance.Geocoder()
   } catch {
-    ElMessage.error('高德地图 SDK 加载失败')
+    ElMessage.error('高德地图 SDK 加载失败，请刷新页面重试')
   }
 
   if (isEdit.value) {
@@ -221,7 +221,7 @@ onMounted(async () => {
       }
       locations.value = data.locations.map((l) => ({ ...l, photos: [], _deleted: false }))
     } catch {
-      ElMessage.error('加载失败')
+      ElMessage.error('加载旅行详情失败，请稍后重试')
     } finally {
       loading.value = false
       await nextTick()
@@ -276,7 +276,7 @@ function searchPoi() {
       const pois = result?.poiList?.pois || result?.pois || []
       if (pois.length === 0) {
         poiResults.value = []
-        ElMessage.warning('未找到相关地点')
+        ElMessage.warning(`未找到与「${poiSearch.value.trim()}」相关的地点，换个关键词试试`)
         return
       }
       const resolved = await resolveCityForPois(pois)
@@ -287,15 +287,15 @@ function searchPoi() {
 
     poiResults.value = []
     if (status === 'no_data') {
-      ElMessage.warning('未找到相关地点')
+      ElMessage.warning(`未找到与「${poiSearch.value.trim()}」相关的地点，换个关键词试试`)
       return
     }
 
     const info = typeof result === 'string' ? result : result?.info || '未知错误'
     if (info === 'INVALID_USER_SCODE') {
-      ElMessage.error('高德安全密钥未配置或无效，请在 .env 中填写 AMAP_SECURITY_CODE 后重启服务')
+      ElMessage.error('高德安全密钥未配置或无效，请在服务端 .env 中配置 AMAP_SECURITY_CODE 后重启')
     } else {
-      ElMessage.error(`地图搜索失败：${info}`)
+      ElMessage.error(`地图搜索失败（高德返回 ${info}），请检查 Key 与安全密钥配置`)
     }
   })
 }
@@ -335,12 +335,21 @@ function addPoi(poi: AmapPoi) {
   }
 }
 
-function removeLocation(loc: EditableLocation) {
+async function removeLocation(loc: EditableLocation) {
   if (editingNoteId.value === loc.id) editingNoteId.value = null
+  // 破坏性操作需确认：删除地点会连带丢弃其游记（保存后不可恢复）
+  try {
+    await ElMessageBox.confirm(
+      `移除「${loc.name}」？其游记将一并删除${isEdit.value ? '，保存后生效' : ''}。`,
+      '移除地点',
+      { type: 'warning', confirmButtonText: '移除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
   if (isEdit.value && loc.id && typeof loc.id === 'number' && loc.id > 0) {
     // Mark for deletion, don't actually delete yet
     loc._deleted = true
-    ElMessage.info('地点将在保存后删除')
   } else {
     const index = locations.value.indexOf(loc)
     if (index >= 0) locations.value.splice(index, 1)
@@ -358,9 +367,9 @@ async function handleUploadPhoto(loc: EditableLocation, file: File) {
     if (!loc.photos) loc.photos = []
     loc.photos.push(data)
     loc.photo_count = (loc.photo_count || 0) + 1
-    ElMessage.success('上传成功')
+    ElMessage.success('已上传')
   } catch {
-    ElMessage.error('上传失败')
+    ElMessage.error('上传照片失败，请稍后重试')
   }
   return false
 }
@@ -446,7 +455,7 @@ async function handleSave() {
           .map((location) => location.id),
       })
 
-      ElMessage.success('保存成功')
+      ElMessage.success('已保存')
       hasUnsavedChanges.value = false
       router.push(`/trips/${tripId.value}`)
     } else {
@@ -466,7 +475,7 @@ async function handleSave() {
           note: l.note,
         })),
       })
-      ElMessage.success('创建成功')
+      ElMessage.success('已创建')
       hasUnsavedChanges.value = false
       localStorage.removeItem(DRAFT_KEY)
       router.push(`/trips/${data.id}`)
@@ -478,7 +487,7 @@ async function handleSave() {
       // 不自动刷新地点列表，避免覆盖用户尚未保存的修改；由用户手动刷新。
       ElMessage.error('检测到其他窗口的修改，本页数据已过期。请复制未提交的内容后刷新页面重试')
     } else {
-      ElMessage.error('保存失败')
+      ElMessage.error('保存失败，请稍后重试')
     }
   } finally {
     saving.value = false
@@ -538,9 +547,14 @@ async function handleSave() {
           </div>
 
           <div class="poi-search">
-            <el-input v-model="poiSearch" placeholder="搜索景点名称（如故宫、长城）" @keyup.enter="searchPoi">
+            <el-input
+              v-model="poiSearch"
+              placeholder="搜索景点名称（如故宫、长城）"
+              aria-label="搜索地点"
+              @keyup.enter="searchPoi"
+            >
               <template #append>
-                <el-button @click="searchPoi">搜索</el-button>
+                <el-button aria-label="搜索地点" @click="searchPoi">搜索</el-button>
               </template>
             </el-input>
 
@@ -717,7 +731,7 @@ async function handleSave() {
   font-size: var(--text-sm);
   cursor: pointer;
   text-align: left;
-  transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease, background-color var(--dur-fast) ease;
+  transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
 }
 
 .section-rail button:hover {
@@ -776,6 +790,7 @@ async function handleSave() {
   z-index: 30;
   max-height: 320px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -791,7 +806,7 @@ async function handleSave() {
   background: transparent;
   text-align: left;
   cursor: pointer;
-  transition: background-color var(--dur-fast) ease;
+  transition: background-color var(--dur-fast) var(--ease-out);
 }
 
 .poi-item:last-child {

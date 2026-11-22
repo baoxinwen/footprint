@@ -84,7 +84,7 @@ function goToDetail(id: number) {
         :key="section.year"
         class="year-section"
       >
-        <h2 class="year-heading" :style="{ animationDelay: `${sIndex * 60}ms` }">
+        <h2 class="year-heading" :style="{ animationDelay: `${sIndex * 40}ms` }">
           <span class="year-number">{{ section.year }}</span>
           <span class="year-count">{{ section.groups.reduce((n, g) => n + g.count, 0) }} 次旅行</span>
         </h2>
@@ -123,7 +123,7 @@ function goToDetail(id: number) {
                 </span>
                 <span class="trip-info">
                   <span class="trip-title-row">
-                    <h4 class="trip-title">{{ trip.title }}</h4>
+                    <span class="trip-title">{{ trip.title }}</span>
                     <span class="trip-date">{{ formatDateRange(trip.start_date, trip.end_date) }}</span>
                   </span>
                   <span v-if="trip.description" class="trip-desc">{{ trip.description }}</span>
@@ -406,9 +406,9 @@ function goToDetail(id: number) {
 .trip-arrow {
   align-self: center;
   color: var(--color-ink-muted);
-  font-size: 15px;
+  font-size: var(--text-base);
   flex-shrink: 0;
-  transition: color var(--dur-base) ease, transform var(--dur-base) var(--ease-out);
+  transition: color var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
   margin-right: 6px;
 }
 
