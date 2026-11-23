@@ -276,7 +276,9 @@ function renderCityMarkers() {
   if (!map.value || !AMapRef) return
 
   cityMarkers.value.forEach((city) => {
-    const size = Math.max(34, Math.min(city.city.length * 14 + 18, 80))
+    // 标记高度恒定；城市名长度只影响宽度（nowrap 自适应），
+    // 否则长地名（如自治州全称）会按字数撑出巨型标记
+    const size = 46
     const scale = Math.min(1 + (city.count - 1) * 0.09, 1.32)
     const badge = city.count > 1
       ? `<span style="position:absolute;top:-8px;right:-8px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:var(--color-accent);color:var(--color-on-accent);font-size:11px;font-weight: var(--fw-bold);display:inline-flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.25);">${city.count}</span>`
