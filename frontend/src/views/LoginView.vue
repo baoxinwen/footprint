@@ -89,7 +89,8 @@ async function handleRegister() {
 
 <template>
   <div class="login-page">
-    <div class="login-map-field" aria-hidden="true">
+    <!-- 品牌区承载页面 h1，不能整体 aria-hidden；装饰件各自 aria-hidden -->
+    <div class="login-map-field">
       <svg class="field-contour" viewBox="0 0 600 900" preserveAspectRatio="xMidYMid slice">
         <path d="M-20 720 C 120 660, 200 760, 340 700 S 560 620, 660 680" />
         <path d="M-20 640 C 100 590, 220 670, 360 610 S 560 540, 660 590" />
@@ -406,27 +407,7 @@ async function handleRegister() {
   color: var(--color-ink-secondary);
 }
 
-.form-input {
-  height: 46px;
-  padding: 0 14px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-canvas);
-  color: var(--color-ink);
-  font-size: var(--text-base);
-  font-family: var(--font-sans);
-  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 14%, transparent);
-}
-
-.form-input::placeholder {
-  color: var(--color-ink-muted);
-}
+/* .form-input 的字段面/双环/自动填充在 main.css 全局定义，这里只管布局 */
 
 .submit-btn {
   display: inline-flex;
@@ -471,23 +452,76 @@ async function handleRegister() {
 }
 
 
-/* ========== 响应式 ========== */
+/* ========== 响应式：≤900px 品牌区从整屏左栏变为顶部品牌带，表单卡片上叠 ========== */
 @media (max-width: 900px) {
   .login-page {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
   }
 
   .login-map-field {
+    display: flex;
+    align-items: flex-end;
+    min-height: clamp(232px, 36dvh, 340px);
+    /* 底部留白给卡片上叠；顶部容纳「标记 + 坐标」角标 */
+    padding: calc(52px + env(safe-area-inset-top)) var(--space-lg) 84px;
+  }
+
+  /* PC 的竖向路线在窄屏放不下，只保留「标记 + 坐标」作为品牌带角标 */
+  .field-route {
     display: none;
   }
 
+  .field-marker {
+    left: var(--space-lg);
+    top: calc(28px + env(safe-area-inset-top));
+  }
+
+  .field-coordinate {
+    left: calc(var(--space-lg) + 14px);
+    top: calc(28px + env(safe-area-inset-top));
+    padding: 10px 0; /* 触控高度撑到 38px，视觉位置不变 */
+    letter-spacing: 0.12em;
+  }
+
+  .brand-block {
+    position: static;
+    transform: none;
+  }
+
+  .brand-kicker {
+    margin-bottom: var(--space-sm);
+  }
+
+  .brand-title {
+    font-size: var(--text-2xl);
+    line-height: var(--lh-2xl);
+    letter-spacing: 0.04em;
+  }
+
+  .brand-subtitle {
+    margin-top: var(--space-sm);
+    font-size: var(--text-sm);
+  }
+
   .login-shell {
-    min-height: 100dvh;
-    padding: var(--space-lg) var(--space-md);
+    position: relative;
+    z-index: 1; /* 卡片压在品牌带之上 */
+    min-height: 0;
+    align-items: flex-start;
+    margin-top: -52px;
+    padding: 0 var(--space-md) calc(var(--space-xl) + env(safe-area-inset-bottom));
+    background: transparent; /* 自带底色会盖住被上叠的那段品牌带 */
   }
 
   .login-panel {
-    box-shadow: var(--shadow-soft);
+    padding: var(--space-lg);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-card);
+  }
+
+  .form-input {
+    height: 48px;
   }
 }
 </style>
