@@ -542,12 +542,10 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div class="panel-divider"></div>
-
         <!-- Map style -->
         <div class="panel-section">
           <div class="section-label" id="map-style-label">地图样式</div>
-          <el-select v-model="currentStyle" aria-labelledby="map-style-label" @change="onStyleChange" size="small" style="width: 100%">
+          <el-select v-model="currentStyle" class="panel-select" aria-labelledby="map-style-label" @change="onStyleChange">
             <el-option v-for="s in mapStyles" :key="s.value" :label="s.label" :value="s.value" />
           </el-select>
         </div>
@@ -565,7 +563,7 @@ onUnmounted(() => {
         <!-- Route filter -->
         <div class="panel-section">
           <div class="section-label" id="route-filter-label">路线筛选</div>
-          <el-select v-model="selectedTripId" aria-labelledby="route-filter-label" @change="onRouteChange" @focus="loadRoutes" size="small" clearable placeholder="查看路线" style="width: 100%">
+          <el-select v-model="selectedTripId" class="panel-select" aria-labelledby="route-filter-label" @change="onRouteChange" @focus="loadRoutes" clearable placeholder="查看路线">
             <el-option v-for="r in routes" :key="r.trip_id" :label="r.title" :value="r.trip_id" />
           </el-select>
         </div>
@@ -661,25 +659,27 @@ onUnmounted(() => {
   color: var(--color-ink-muted);
 }
 
-/* 统计格 */
+/* 统计格：明度分层色块承载（铁律 1，不画分隔线） */
 .panel-stats {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 0;
-  padding: 12px 8px 16px;
-  border-top: 1px solid var(--color-border);
+  margin: 2px 12px 0;
+  padding: 10px 6px 12px;
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-sm);
 }
 
 .stat-item {
   text-align: center;
-  padding: 8px 4px;
+  padding: 6px 4px 8px;
 }
 
 .stat-value {
   font-family: var(--font-serif);
   font-size: var(--text-lg);
   font-weight: var(--fw-bold);
-  line-height: 1.2;
+  line-height: 1.1;
   color: var(--color-primary);
   font-variant-numeric: tabular-nums;
 }
@@ -687,19 +687,17 @@ onUnmounted(() => {
 .stat-label {
   font-size: var(--text-xs);
   color: var(--color-ink-muted);
-  margin-top: 2px;
+  margin-top: 4px;
   letter-spacing: 0.08em;
 }
 
-.panel-divider {
-  height: 1px;
-  background: var(--color-border);
-  margin: 0 16px;
+/* 分组：统一节奏，控件统一 38px 高（面板紧凑档） */
+.panel-section {
+  padding: 12px 16px 0;
 }
 
-/* 分组 */
-.panel-section {
-  padding: 12px 16px;
+.panel-section:last-of-type {
+  padding-bottom: 14px;
 }
 
 .section-label {
@@ -710,6 +708,17 @@ onUnmounted(() => {
   margin-bottom: 8px;
 }
 
+/* 面板内下拉与全局控件档同高（EP small 仅 24px，曾与按钮 44px 失衡） */
+.panel-select {
+  width: 100%;
+}
+
+.control-panel :deep(.panel-select .el-select__wrapper),
+.control-panel :deep(.panel-select .el-input__wrapper) {
+  min-height: 38px;
+  border-radius: var(--radius-sm);
+}
+
 /* 图层切换 */
 .layer-toggles {
   display: flex;
@@ -718,28 +727,26 @@ onUnmounted(() => {
 
 .layer-btn {
   flex: 1;
-  min-height: 44px;
-  padding: 6px 0;
-  border: 1px solid var(--color-border);
+  min-height: 38px;
+  padding: 8px 0;
+  border: none;
   border-radius: var(--radius-sm);
-  background: var(--color-surface);
+  background: var(--color-field);
   font-family: var(--font-sans);
   font-size: var(--text-xs);
   color: var(--color-ink-secondary);
   cursor: pointer;
   text-align: center;
-  transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 
 .layer-btn:hover {
-  border-color: var(--color-primary);
   color: var(--color-primary);
   background: var(--color-primary-soft);
 }
 
 .layer-btn.active {
   background: var(--color-primary);
-  border-color: var(--color-primary);
   color: var(--color-on-primary);
   font-weight: var(--fw-medium);
 }
@@ -747,32 +754,30 @@ onUnmounted(() => {
 /* 照片模式 */
 .photo-mode-btn {
   width: 100%;
-  min-height: 44px;
+  min-height: 38px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 9px 0;
-  border: 1px solid var(--color-border);
+  padding: 8px 0;
+  border: none;
   border-radius: var(--radius-sm);
-  background: var(--color-surface);
+  background: var(--color-field);
   font-family: var(--font-sans);
   font-size: var(--text-sm);
   font-weight: var(--fw-medium);
   color: var(--color-ink-secondary);
   cursor: pointer;
-  transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 
 .photo-mode-btn:hover {
-  border-color: var(--color-primary);
   color: var(--color-primary);
   background: var(--color-primary-soft);
 }
 
 .photo-mode-btn.active {
   background: var(--color-primary);
-  border-color: var(--color-primary);
   color: var(--color-on-primary);
 }
 
@@ -809,7 +814,8 @@ onUnmounted(() => {
 
   .panel-stats {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    padding: 10px 4px 12px;
+    margin: 2px 8px 0;
+    padding: 10px 2px 12px;
   }
 
   .stat-value {
@@ -817,7 +823,7 @@ onUnmounted(() => {
   }
 
   .panel-section {
-    padding: 8px 12px;
+    padding: 10px 12px 0;
   }
 }
 </style>
