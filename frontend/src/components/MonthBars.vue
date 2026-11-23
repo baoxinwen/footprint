@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { MonthlyStats } from '../types'
 
 const props = defineProps<{
@@ -17,14 +17,30 @@ const bars = computed(() => {
 const maxCount = computed(() => Math.max(1, ...bars.value.map((b) => b.count)))
 const maxMonth = computed(() => bars.value.reduce((a, b) => (b.count > a.count ? b : a)).month)
 
-// 图表绘制区尺寸（viewBox 坐标）
-const W = 640
-const H = 220
-const PAD_TOP = 28
-const PAD_BOTTOM = 30
-const GAP = 14
+/* 图表绘制区尺寸（viewBox 坐标）。SVG 里的文字随 viewBox 等比缩放：
+   宽版画布 640 在手机上会缩到约一半，12px 的月份标签只剩 6px。
+   容器窄于 480px 时切到紧凑画布（320 宽、数字月份），文字保持约 1:1 的实际字号。
+   断点看容器宽度而非视口，侧栏/分栏里同样成立 */
+const WIDE = { W: 640, H: 220, PAD_TOP: 28, PAD_BOTTOM: 30, LABEL_GAP: 20, GAP: 14, RX: 6 }
+const TIGHT = { W: 320, H: 200, PAD_TOP: 20, PAD_BOTTOM: 24, LABEL_GAP: 16, GAP: 6, RX: 4 }
+const dims = computed(() => (compact.value ? TIGHT : WIDE))
+
+const rootRef = ref<HTMLElement | null>(null)
+const compact = ref(false)
+let observer: ResizeObserver | undefined
+
+onMounted(() => {
+  if (!rootRef.value || typeof ResizeObserver === 'undefined') return
+  observer = new ResizeObserver((entries) => {
+    compact.value = (entries[0]?.contentRect.width ?? 0) < 480
+  })
+  observer.observe(rootRef.value)
+})
+
+onUnmounted(() => observer?.disconnect())
 
 const geometry = computed(() => {
+  const { W, H, PAD_TOP, PAD_BOTTOM, GAP } = dims.value
   const n = bars.value.length
   const bw = (W - GAP * (n - 1)) / n
   const plotH = H - PAD_TOP - PAD_BOTTOM
@@ -43,8 +59,8 @@ const geometry = computed(() => {
 </script>
 
 <template>
-  <div class="month-chart">
-    <svg :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="xMidYMid meet" role="img" aria-label="月度旅行次数分布柱状图">
+  <div ref="rootRef" class="month-chart" :class="{ compact }">
+    <svg :viewBox="`0 0 ${dims.W} ${dims.H}`" preserveAspectRatio="xMidYMid meet" role="img" aria-label="月度旅行次数分布柱状图">
       <!-- 数值标签 -->
       <text
         v-for="g in geometry"
@@ -63,10 +79,10 @@ const geometry = computed(() => {
         <rect
           class="bar-bg"
           :x="g.x"
-          :y="PAD_TOP"
+          :y="dims.PAD_TOP"
           :width="g.w"
-          :height="H - PAD_TOP - PAD_BOTTOM"
-          rx="6"
+          :height="dims.H - dims.PAD_TOP - dims.PAD_BOTTOM"
+          :rx="dims.RX"
         />
         <rect
           :class="['bar-fill', { 'is-peak': g.isPeak }]"
@@ -74,21 +90,21 @@ const geometry = computed(() => {
           :y="g.y"
           :width="g.w"
           :height="g.h"
-          rx="6"
+          :rx="dims.RX"
         />
       </g>
       <!-- 基线 -->
-      <line class="axis" :x1="0" :x2="W" :y1="H - PAD_BOTTOM + 0.5" :y2="H - PAD_BOTTOM + 0.5" />
-      <!-- 月份标签 -->
+      <line class="axis" :x1="0" :x2="dims.W" :y1="dims.H - dims.PAD_BOTTOM + 0.5" :y2="dims.H - dims.PAD_BOTTOM + 0.5" />
+      <!-- 月份标签：紧凑画布放不下「10月」，只留数字 -->
       <text
         v-for="g in geometry"
         :key="'m' + g.month"
         class="month-label"
         :x="g.x + g.w / 2"
-        :y="H - PAD_BOTTOM + 20"
+        :y="dims.H - dims.PAD_BOTTOM + dims.LABEL_GAP"
         text-anchor="middle"
       >
-        {{ g.month }}月
+        {{ compact ? g.month : `${g.month}月` }}
       </text>
     </svg>
     <!-- 读屏数据等价物：role="img" 下 SVG 内文本不可达，走隐藏表格 -->
