@@ -1182,6 +1182,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 }
 
 .photo-delete {
+  position: relative; /* 热区伪元素的定位基准 */
   pointer-events: auto;
   display: inline-flex;
   align-items: center;
@@ -1194,6 +1195,14 @@ defineExpose({ refreshPhotos: loadPhotos })
   color: #fff;
   cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+/* 触控热区向外扩 7px 到 44x44（视觉不变）：30px 的圆钮在触屏上太难点中 */
+.photo-delete::before {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border-radius: 999px;
 }
 
 .photo-delete:hover {
