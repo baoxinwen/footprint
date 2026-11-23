@@ -467,13 +467,14 @@ function cycleTheme() {
   background: var(--color-danger-soft);
 }
 
-/* ========== 移动端顶栏 ========== */
+/* ========== 移动端顶栏（env() 安全区：刘海/灵动岛与横屏左右内缩） ========== */
 .mobile-top-bar {
   display: none;
   align-items: center;
   justify-content: space-between;
-  min-height: 60px;
-  padding: 8px 12px 8px 16px;
+  min-height: calc(60px + env(safe-area-inset-top));
+  padding: calc(8px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 8px
+    calc(16px + env(safe-area-inset-left));
   background: color-mix(in srgb, var(--color-surface) 94%, transparent);
   backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--color-border);
@@ -528,7 +529,9 @@ main {
   left: 0;
   right: 0;
   height: calc(64px + env(safe-area-inset-bottom));
+  padding-right: env(safe-area-inset-right);
   padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
   background: color-mix(in srgb, var(--color-surface) 96%, transparent);
   backdrop-filter: blur(14px);
   border-top: 1px solid var(--color-border);
@@ -757,11 +760,11 @@ main {
 
   .mobile-search-bar .search-dropdown {
     position: fixed;
-    top: 60px;
+    top: calc(60px + env(safe-area-inset-top));
     left: 0;
     right: 0;
     border-radius: 0;
-    max-height: calc(100dvh - 60px - 64px - env(safe-area-inset-bottom));
+    max-height: calc(100dvh - 60px - env(safe-area-inset-top) - 64px - env(safe-area-inset-bottom));
   }
 }
 </style>

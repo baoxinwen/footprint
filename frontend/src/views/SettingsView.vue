@@ -902,23 +902,7 @@ const railItems = [
   color: var(--color-ink-secondary);
 }
 
-.form-input {
-  height: 42px;
-  padding: 0 14px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-canvas);
-  color: var(--color-ink);
-  font-size: var(--text-base);
-  font-family: var(--font-sans);
-  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 14%, transparent);
-}
+/* .form-input 的字段面/双环/自动填充在 main.css 全局定义 */
 
 .submit-btn {
   align-self: flex-start;
@@ -988,7 +972,9 @@ const railItems = [
 /* ========== 响应式 ========== */
 @media (max-width: 900px) {
   .settings-layout {
-    grid-template-columns: 1fr;
+    /* minmax(0, 1fr) 而非裸 1fr：裸 1fr 的最小宽度是内容最小宽度，
+       分享链接里 nowrap 的长 URL 会把整列撑到 500px+、手机上横向溢出 */
+    grid-template-columns: minmax(0, 1fr);
     gap: 0;
   }
 

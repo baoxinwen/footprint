@@ -330,6 +330,80 @@ select:focus-visible {
   border: none;
 }
 
+/* ============================================================
+   原生文本输入（.form-input）与输入通用规则
+   ============================================================ */
+/* 铁律 1/2：与上面 EP wrapper 同一套 —— 去边框、字段面靠明度分层、聚焦双环咬合。
+   登录页与设置页共用，视图内只覆盖尺寸差异 */
+.form-input {
+  height: 46px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-field);
+  color: var(--color-ink);
+  font-size: var(--text-base);
+  font-family: var(--font-sans);
+  transition: box-shadow var(--dur-base) var(--ease-out), background-color var(--dur-base) var(--ease-out);
+}
+
+.form-input:hover {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-ink) 10%, transparent);
+}
+
+.form-input:focus {
+  outline: none;
+  background-color: var(--color-surface);
+  box-shadow:
+    inset 0 0 0 1px var(--color-primary),
+    0 0 0 3px color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+
+.form-input::placeholder {
+  color: var(--color-ink-muted);
+}
+
+/* 浏览器自动填充用自己的底色盖住字段面，且无法用 background 覆盖，
+   只能用不透明的超大内阴影盖回去（Element Plus 未处理，默认会露出淡蓝/淡黄）。
+   悬停/聚焦态要把盖色与环一起写全；选择器多带一层父类，特异性高于组件库自身规则 */
+.form-input:-webkit-autofill,
+.form-input:-webkit-autofill:hover {
+  -webkit-box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--color-ink) 10%, transparent),
+    0 0 0 1000px var(--color-field) inset;
+  -webkit-text-fill-color: var(--color-ink);
+  caret-color: var(--color-ink);
+}
+
+.form-input:-webkit-autofill:focus {
+  -webkit-box-shadow:
+    inset 0 0 0 1px var(--color-primary),
+    0 0 0 3px color-mix(in srgb, var(--color-primary) 14%, transparent),
+    0 0 0 1000px var(--color-surface) inset;
+}
+
+.el-input .el-input__inner:-webkit-autofill,
+.el-textarea .el-textarea__inner:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px var(--color-field) inset;
+  -webkit-text-fill-color: var(--color-ink);
+  caret-color: var(--color-ink);
+}
+
+/* 聚焦时字段面升到 surface（铁律 2），自动填充的盖色同步跟上 */
+.el-input .el-input__wrapper.is-focus .el-input__inner:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px var(--color-surface) inset;
+}
+
+/* 移动端输入字号下限 16px：iOS Safari 对 <16px 的输入框聚焦时整页自动缩放。
+   选择器用 :is + :not 链把特异性抬到 (0,7,1)，高于各视图 scoped 类规则 (0,2,0)，
+   否则会被 .search-input[data-v-*] 之类的 13px 覆盖；max(1em, 16px) 只抬不降 */
+@media (max-width: 900px) {
+  :is(input, select, textarea):not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='button']):not([type='submit']):not([type='reset']),
+  .el-select .el-select__wrapper {
+    font-size: max(1em, 16px);
+  }
+}
+
 .el-dialog {
   border-radius: var(--radius-md);
   overflow: hidden;
