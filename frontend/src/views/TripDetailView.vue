@@ -35,6 +35,9 @@ const trip = ref<TripDetail | null>(null)
 const loading = ref(true)
 const loadError = ref(false)
 const expandedLocations = ref<Set<number>>(new Set())
+// 过渡结束后行值落定为 auto：fr 轨道在「过渡期间内容高度再变化」时可能停在陈旧值，
+// 被卡片 overflow:hidden 裁掉、滚动后才自愈；落定后任何内容变化原生撑开，无冻结窗口
+const settledLocations = ref<Set<number>>(new Set())
 const locationPhotos = ref<Record<number, Photo[]>>({})
 const showPhotoViewer = ref(false)
 const viewerPhotos = ref<Photo[]>([])
@@ -99,6 +102,7 @@ async function loadTrip() {
 function resetTripState() {
   trip.value = null
   expandedLocations.value = new Set()
+  settledLocations.value = new Set()
   locationPhotos.value = {}
   showPhotoViewer.value = false
   viewerPhotos.value = []
@@ -116,11 +120,57 @@ watch(tripId, () => {
   void loadTrip()
 }, { immediate: true, flush: 'sync' })
 
-function toggleLocation(loc: Location) {
+/* ---------- 折叠状态机（铁律 7 的 Grid 行过渡，全 px 行内驱动） ----------
+   开/关/中途反转统一走「读当前高 → 钉 px 基线 → 渲染一帧 → 目标 px」，
+   不依赖 CSS transition 的自动反向与 fr 插值边界（两者在快速连点下
+   会把行高冻在陈旧值，被卡片 overflow:hidden 裁掉、滚动后才自愈）。
+   过渡结束后行值落定 auto：内容高度再变化（照片到达、图片加载）原生撑开。 */
+
+const nextFrame = () =>
+  new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+
+function onCollapseTransitionEnd(loc: Location, event: TransitionEvent) {
+  if (event.propertyName !== 'grid-template-rows') return
+  const el = document.getElementById(`location-collapse-${loc.id}`)
+  if (!el) return
   if (expandedLocations.value.has(loc.id)) {
-    expandedLocations.value.delete(loc.id)
+    settledLocations.value.add(loc.id)
+    el.style.gridTemplateRows = '' // 展开到位：落定 auto（内容变化原生撑开）
   } else {
+    el.style.gridTemplateRows = '' // 收起到位：交还类的 0fr
+  }
+}
+
+// 每个 location 的折叠操作代际：快速连点时新旧 toggle 的 async 延续并发交错，
+// 恢复执行后的行内写入必须校验代际，过期者放弃（否则旧延续会把新目标改回旧值）
+const collapseGen = new Map<number, number>()
+
+async function toggleLocation(loc: Location) {
+  const gen = (collapseGen.get(loc.id) ?? 0) + 1
+  collapseGen.set(loc.id, gen)
+  const el = document.getElementById(`location-collapse-${loc.id}`)
+  const pin = () => {
+    if (el) el.style.gridTemplateRows = `${Math.round(el.getBoundingClientRect().height)}px`
+  }
+  if (expandedLocations.value.has(loc.id)) {
+    pin() // 钉当前高（可能是中途插值），基线帧后收合到 0px
+    settledLocations.value.delete(loc.id)
+    expandedLocations.value.delete(loc.id)
+    await nextTick()
+    await nextFrame()
+    if (el && collapseGen.get(loc.id) === gen) el.style.gridTemplateRows = '0px'
+  } else {
+    pin() // 钉当前高（0 或中途值）
+    settledLocations.value.delete(loc.id)
     expandedLocations.value.add(loc.id)
+    await nextTick()
+    await nextFrame()
+    if (collapseGen.get(loc.id) !== gen) return
+    // 目标高 = 内容固有高度：行高被压 0 时 wrap.scrollHeight 也是 0，
+    // 必须读 clip 的 scrollHeight，否则目标 '0px' 无过渡可跑、面板卡死
+    const clip = el?.querySelector('.location-collapse-clip')
+    const target = clip ? clip.scrollHeight : (el?.scrollHeight ?? 0)
+    if (el) el.style.gridTemplateRows = `${target}px`
     // 预加载已发起过请求的地点不重复拉取
     if (!latestPhotoLoads.has(loc.id)) loadPhotos(loc.id)
   }
@@ -516,10 +566,12 @@ defineExpose({ refreshPhotos: loadPhotos })
 
             <!-- 铁律 7：Grid 0fr→1fr 过渡折叠，免 JS 算高；收起内容 inert 防聚焦 -->
             <div
+              :id="`location-collapse-${loc.id}`"
               class="location-collapse"
-              :class="{ open: expandedLocations.has(loc.id) }"
+              :class="{ open: expandedLocations.has(loc.id), settled: settledLocations.has(loc.id) }"
               :inert="!expandedLocations.has(loc.id)"
               :aria-hidden="!expandedLocations.has(loc.id)"
+              @transitionend="onCollapseTransitionEnd(loc, $event)"
             >
               <div class="location-collapse-clip">
                 <div
@@ -1287,6 +1339,14 @@ defineExpose({ refreshPhotos: loadPhotos })
 
 .location-collapse.open {
   grid-template-rows: 1fr;
+}
+
+/* 展开过渡结束后的落定态：行值转 auto（与 1fr 解析同高、零跳动）。
+   此后内容高度变化（照片到达、Markdown 图片加载）原生撑开容器，
+   不会触发 fr 轨道冻结被卡片裁切的病灶 */
+.location-collapse.open.settled {
+  grid-template-rows: auto;
+  transition: none;
 }
 
 .location-collapse-clip {
