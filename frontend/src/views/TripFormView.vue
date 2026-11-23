@@ -1033,7 +1033,8 @@ async function handleSave() {
 
 @media (max-width: 768px) {
   .form-page {
-    padding: var(--space-lg) var(--space-md) var(--space-2xl);
+    /* 底部预留：吸底提交栏约 64 + 呼吸 32（标签栏的 64 由 main 自己的 padding-bottom 让出） */
+    padding: var(--space-lg) var(--space-md) calc(96px + env(safe-area-inset-bottom));
   }
 
   .form-title {
@@ -1048,6 +1049,29 @@ async function handleSave() {
   .location-actions {
     width: 100%;
     justify-content: flex-end;
+  }
+
+  /* 提交栏吸底：与底部标签栏同为 fixed，固定在标签栏上方，长表单不必滚到底才能提交。
+     不用 sticky——各内核对滚动容器 padding 的吸底参照不一致，Safari 上可能藏到标签栏后 */
+  .form-actions {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(64px + env(safe-area-inset-bottom));
+    z-index: 90;
+    margin: 0;
+    padding: var(--space-sm) var(--space-md) var(--space-md);
+    background: color-mix(in srgb, var(--color-canvas) 92%, transparent);
+    backdrop-filter: blur(14px);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .form-actions :deep(.el-button) {
+    margin-left: 0; /* EP 相邻按钮自带的 12px 外边距，改由 gap 统一控制 */
+  }
+
+  .form-actions :deep(.el-button--primary) {
+    flex: 1;
   }
 }
 </style>
