@@ -18,7 +18,7 @@ const statsLoaded = ref(false)
 const cityMarkers = ref<CityMarker[]>([])
 const routes = ref<TripRoute[]>([])
 const selectedTripId = ref<number | null>(null)
-// PRD 4.5：移动端统计面板默认折叠，桌面端默认展开
+// PRD 4.5：移动端默认只留顶部统计条（控制抽屉收起），桌面端面板默认展开
 const showStats = ref(window.innerWidth >= 768)
 const map = shallowRef<any>(null)
 let AMapRef: any = null
@@ -187,6 +187,8 @@ async function onStyleChange(style: string) {
 
 function onRouteChange(tripId: number | null | undefined) {
   selectTrip(tripId || null)
+  // 手机：选完路线自动收起抽屉，让路线完整露出
+  if (window.innerWidth <= 768) showStats.value = false
 }
 
 function toggleSatellite() {
@@ -511,11 +513,46 @@ onUnmounted(() => {
       id="map-container"
       class="map-container"
       role="application"
-      :aria-label="`旅行足迹地图：${stats.trip_count} 次旅行、${stats.city_count} 座城市、${stats.location_count} 个地点，交互控件见统计面板`"
+      :aria-label="`旅行足迹地图：${stats.trip_count} 次旅行、${stats.city_count} 座城市、${stats.location_count} 个地点，图层与路线控件见上方面板`"
     ></div>
 
-    <!-- Unified control panel -->
-    <div class="control-panel" :class="{ collapsed: !showStats }">
+    <!-- 手机：顶部常驻统计条（统计数字 + 抽屉开关）；桌面隐藏，统计在控制面板内 -->
+    <div class="map-stats-strip">
+      <div class="strip-stats">
+        <div class="strip-item">
+          <span class="strip-value">{{ stats.trip_count }}</span>
+          <span class="strip-label">旅行</span>
+        </div>
+        <div class="strip-item">
+          <span class="strip-value">{{ stats.location_count }}</span>
+          <span class="strip-label">地点</span>
+        </div>
+        <div class="strip-item">
+          <span class="strip-value">{{ stats.city_count }}</span>
+          <span class="strip-label">城市</span>
+        </div>
+        <div class="strip-item">
+          <span class="strip-value">{{ stats.province_count }}</span>
+          <span class="strip-label">省份</span>
+        </div>
+      </div>
+      <button
+        type="button"
+        class="strip-toggle"
+        aria-label="地图图层与路线"
+        :aria-expanded="showStats"
+        aria-controls="map-controls"
+        @click="toggleStats"
+      >
+        <el-icon aria-hidden="true"><ArrowDown v-if="showStats" /><ArrowUp v-else /></el-icon>
+      </button>
+    </div>
+
+    <!-- 手机：抽屉展开时的遮罩，点按即收起 -->
+    <div v-if="showStats" class="sheet-scrim" @click="toggleStats"></div>
+
+    <!-- 控制面板：桌面为左上角面板；手机为底部抽屉（只放图层/样式/路线/照片） -->
+    <div id="map-controls" class="control-panel" :class="{ collapsed: !showStats }">
       <button class="panel-header" :aria-expanded="showStats" @click="toggleStats">
         <span class="panel-title">统计概览</span>
         <el-icon class="toggle-icon"><ArrowUp v-if="showStats" /><ArrowDown v-else /></el-icon>
@@ -608,6 +645,10 @@ onUnmounted(() => {
 .map-container {
   width: 100%;
   height: 100%;
+  /* 建立独立层叠上下文：高德内部图层（版权标识等）的 z-index 不再越级
+     压到统计条/抽屉/遮罩这些浮层上 */
+  position: relative;
+  z-index: 0;
 }
 
 /* 控制面板：玻璃浮层 */
@@ -650,8 +691,11 @@ onUnmounted(() => {
   transition: background-color var(--dur-fast) var(--ease-out);
 }
 
-.panel-header:hover {
-  background: var(--color-primary-soft);
+/* 触屏上 :hover 会在点按后粘住，悬停高亮只给真正有鼠标/触控板的设备 */
+@media (hover: hover) {
+  .panel-header:hover {
+    background: var(--color-primary-soft);
+  }
 }
 
 .toggle-icon {
@@ -796,34 +840,141 @@ onUnmounted(() => {
   z-index: 5;
 }
 
-/* 响应式 */
+/* ========== 手机专用件：顶部统计条 / 抽屉遮罩（桌面隐藏，样式见响应式块） ========== */
+.map-stats-strip,
+.sheet-scrim {
+  display: none;
+}
+
+/* ========== 响应式 ========== */
 @media (max-width: 768px) {
-  .control-panel {
+  /* 顶部常驻统计条：四个数字一直可见，右侧开关控制底部抽屉 */
+  .map-stats-strip {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    position: absolute;
     top: 12px;
     left: 12px;
     right: 12px;
+    z-index: 10;
+    padding: 6px 6px 6px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+    backdrop-filter: blur(14px);
+    box-shadow: var(--shadow-card);
+  }
+
+  .strip-stats {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .strip-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .strip-value {
+    font-family: var(--font-serif);
+    font-size: var(--text-md);
+    font-weight: var(--fw-bold);
+    line-height: 1.1;
+    color: var(--color-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .strip-label {
+    font-size: var(--text-xs);
+    letter-spacing: 0.08em;
+    color: var(--color-ink-muted);
+  }
+
+  .strip-toggle {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--color-field);
+    color: var(--color-ink-secondary);
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+  }
+
+  .strip-toggle[aria-expanded='true'] {
+    background: var(--color-primary-soft);
+    color: var(--color-primary);
+  }
+
+  .sheet-scrim {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 9;
+    background: color-mix(in srgb, var(--color-ink) 16%, transparent);
+  }
+
+  /* 控制面板 → 底部抽屉：贴在标签栏上方，顶部留出统计条的高度 */
+  .control-panel {
+    top: auto;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
     width: auto;
-    max-height: calc(100dvh - 180px);
+    max-height: calc(100% - 84px);
     overflow-y: auto;
     overscroll-behavior: contain;
+    /* 不透明：半透明毛玻璃会把背后的城市标记晕成大块色斑 */
+    background: var(--color-surface);
+    backdrop-filter: none;
+    animation: sheetUp var(--dur-slow) var(--ease-out);
   }
 
   .control-panel.collapsed {
-    min-width: 0;
+    display: none; /* 收起时由顶部统计条承担入口 */
+  }
+
+  /* 抽屉顶部的 grabber，示意可收起 */
+  .control-panel:not(.collapsed)::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 8px auto 0;
+    border-radius: 999px;
+    background: var(--color-border-strong);
+  }
+
+  .panel-header {
+    display: none; /* 手机上开关在统计条右侧 */
   }
 
   .panel-stats {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    margin: 2px 8px 0;
-    padding: 10px 2px 12px;
-  }
-
-  .stat-value {
-    font-size: var(--text-md);
+    display: none; /* 统计已在顶部统计条 */
   }
 
   .panel-section {
-    padding: 10px 12px 0;
+    padding: 10px 16px 0;
+  }
+
+  @keyframes sheetUp {
+    from {
+      transform: translateY(16px);
+      opacity: 0;
+    }
+    to {
+      transform: none;
+      opacity: 1;
+    }
   }
 }
 </style>
