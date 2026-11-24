@@ -26,6 +26,7 @@ declare module 'vue' {
     ElUpload: typeof import('element-plus/es')['ElUpload']
     EmptyState: typeof import('./src/components/EmptyState.vue')['default']
     MonthBars: typeof import('./src/components/MonthBars.vue')['default']
+    OfflineBanner: typeof import('./src/components/OfflineBanner.vue')['default']
     PhotoViewer: typeof import('./src/components/PhotoViewer.vue')['default']
     RankBars: typeof import('./src/components/RankBars.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
@@ -35,6 +36,7 @@ declare module 'vue' {
     TripCover: typeof import('./src/components/TripCover.vue')['default']
     TripHero: typeof import('./src/components/TripHero.vue')['default']
     TypewriterText: typeof import('./src/components/TypewriterText.vue')['default']
+    UpdatePrompt: typeof import('./src/components/UpdatePrompt.vue')['default']
   }
   export interface GlobalDirectives {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

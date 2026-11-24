@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, nextTick, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { useRegisterSW } from 'virtual:pwa-register/vue'
 import { useAuthStore } from './stores/auth'
 import { useTheme } from './composables/useTheme'
 import { searchAll } from './api/search'
+import { scheduleUpdateChecks } from './pwa/updateChecks'
+import { applyUpdate } from './pwa/applyUpdate'
+import OfflineBanner from './components/OfflineBanner.vue'
+import UpdatePrompt from './components/UpdatePrompt.vue'
 import type { SearchResult } from './types'
 
 const route = useRoute()
@@ -33,6 +39,28 @@ function handleLogout() {
 function goToSettings() {
   router.push('/settings')
 }
+
+/* ---------- Service Worker（离线与更新） ---------- */
+// prompt 模式：新版本就绪后只提示，由用户决定何时切换。不自动切换是为了避免
+// 新旧版本混跑——旧页面向新 Service Worker 要旧的分块文件，而发版后服务器上
+// 已经没有了，懒加载的路由会 404。不理会提示的话，应用完全关闭后自然切到新版。
+// 注册脚本只用来发现新版本、发出切换消息；切换后的重载由 applyUpdate 负责，
+// 原因见该模块的说明。
+let stopUpdateChecks: (() => void) | undefined
+// 生命周期钩子必须在 setup 同步注册；onRegisteredSW 是异步回调，只能在那里给变量赋值
+onUnmounted(() => stopUpdateChecks?.())
+
+const { needRefresh, offlineReady, updateServiceWorker } = useRegisterSW({
+  immediate: true,
+  onRegisteredSW: (_url, registration) => {
+    if (registration) stopUpdateChecks = scheduleUpdateChecks(registration)
+  },
+})
+
+// 首次缓存完成时告知一次：离线可用会占用存储，用户应当知情
+watch(offlineReady, (ready) => {
+  if (ready) ElMessage.success({ message: '已可离线使用', duration: 4000 })
+})
 
 const searchQuery = ref('')
 const searchResults = ref<SearchResult | null>(null)
@@ -324,6 +352,11 @@ function cycleTheme() {
       </div>
     </div>
 
+    <!-- 离线提示：有导航时排在顶栏下方的文档流里，不随内容滚动，安全区由顶栏负责；
+         登录 / 分享页没有顶栏，悬浮在最上方 -->
+    <OfflineBanner v-if="showNav" />
+    <OfflineBanner v-else fixed />
+
     <main :class="{ 'no-header': !showNav }">
       <router-view v-slot="{ Component }">
         <transition name="fade-slide" mode="out-in">
@@ -344,6 +377,9 @@ function cycleTheme() {
         <span class="tab-label">{{ item.label }}</span>
       </router-link>
     </nav>
+
+    <!-- 新版本提示：不阻塞，点「立即刷新」才切换并重载 -->
+    <UpdatePrompt :need-refresh="needRefresh" @refresh="applyUpdate(updateServiceWorker)" />
   </div>
 </template>
 

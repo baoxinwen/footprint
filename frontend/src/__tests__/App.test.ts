@@ -1,15 +1,56 @@
 import { defineComponent, ref } from 'vue'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import type { Ref } from 'vue'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Mock } from 'vitest'
+import { flushPromises, mount, enableAutoUnmount } from '@vue/test-utils'
+import { ElMessage } from 'element-plus'
 import App from '../App.vue'
 import { searchAll } from '../api/search'
+import { goOffline, goOnline, setOnline } from './pwa/onlineStatus'
+
+// 每个用例结束后卸载：残留的实例会跟着后续用例改动的共享状态一起反应
+enableAutoUnmount(afterEach)
 
 const mockLogout = vi.fn()
 const mockPush = vi.fn()
+const mockRoute = { path: '/trips' }
 
 vi.mock('vue-router', () => ({
-  useRoute: () => ({ path: '/trips' }),
+  useRoute: () => mockRoute,
   useRouter: () => ({ push: mockPush }),
+}))
+
+// 自动导入的组件也从 element-plus 取，所以只替换 ElMessage、保留其余导出
+vi.mock('element-plus', async (importOriginal) => {
+  const actual = await importOriginal<any>()
+  return {
+    ...actual,
+    ElMessage: { success: vi.fn(), error: vi.fn() },
+  }
+})
+
+// 插件的虚拟模块在测试环境里加载不了（它的标识不是磁盘路径，内部又有对 vue 的
+// 裸导入），换成可从测试外部驱动的替身
+type SwFake = {
+  needRefresh: Ref<boolean>
+  offlineReady: Ref<boolean>
+  updateServiceWorker: Mock
+  registerOptions: unknown
+}
+const sw = vi.hoisted(() => ({ state: undefined as SwFake | undefined }))
+
+vi.mock('virtual:pwa-register/vue', () => ({
+  // 只在挂载组件时被调用，那时下方创建的替身状态已经就绪
+  useRegisterSW: (options: unknown) => {
+    const state = sw.state
+    if (!state) throw new Error('Service Worker 替身尚未初始化')
+    state.registerOptions = options
+    return {
+      needRefresh: state.needRefresh,
+      offlineReady: state.offlineReady,
+      updateServiceWorker: state.updateServiceWorker,
+    }
+  },
 }))
 
 vi.mock('../stores/auth', () => ({
@@ -26,6 +67,18 @@ const RouterLinkStub = defineComponent({
   props: { to: [String, Object] },
   template: '<a><slot /></a>',
 })
+
+const swState: SwFake = {
+  needRefresh: ref(false),
+  offlineReady: ref(false),
+  updateServiceWorker: vi.fn(),
+  registerOptions: undefined,
+}
+sw.state = swState
+
+// 这个替身在 App.vue 被引入时（早于本文件顶层的语句）就会被用到，必须经 vi.hoisted 提前创建
+const mockApplyUpdate = vi.hoisted(() => vi.fn())
+vi.mock('../pwa/applyUpdate', () => ({ applyUpdate: mockApplyUpdate }))
 
 function mountApp(attachTo?: Element) {
   return mount(App, {
@@ -116,8 +169,6 @@ describe('App global search', () => {
     await wrapper.findAll('.search-close')[0].trigger('click')
     await flushPromises()
     expect(document.activeElement).toBe(wrapper.get('.search-btn').element)
-
-    wrapper.unmount()
   })
 
   it('restores focus to the mobile search button when mobile search closes', async () => {
@@ -131,8 +182,6 @@ describe('App global search', () => {
     await wrapper.get('.mobile-search-bar .search-close').trigger('click')
     await flushPromises()
     expect(document.activeElement).toBe(wrapper.get('.mobile-top-actions button[aria-label="打开搜索"]').element)
-
-    wrapper.unmount()
   })
 
   it('aborts an in-flight request when search closes', async () => {
@@ -210,5 +259,96 @@ describe('App global search', () => {
 
     await results[0].trigger('click')
     expect(mockPush).toHaveBeenCalledWith('/trips/7')
+  })
+})
+
+describe('App offline and update wiring', () => {
+  const HOUR = 60 * 60 * 1000
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    setOnline(true)
+    mockRoute.path = '/trips'
+    swState.needRefresh.value = false
+    swState.offlineReady.value = false
+    swState.registerOptions = undefined
+  })
+  afterEach(() => setOnline(true))
+
+  it('registers at once, then checks for updates on a timer and on returning to the foreground until unmounted', async () => {
+    const registration = { update: vi.fn().mockResolvedValue(undefined) }
+    const wrapper = mountApp()
+
+    expect(swState.registerOptions).toEqual({ immediate: true, onRegisteredSW: expect.any(Function) })
+    const { onRegisteredSW } = swState.registerOptions as { onRegisteredSW: (url: string, reg: typeof registration) => void }
+    onRegisteredSW('/sw.js', registration)
+    expect(registration.update).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(HOUR)
+    expect(registration.update).toHaveBeenCalledTimes(1)
+
+    document.dispatchEvent(new Event('visibilitychange'))
+    expect(registration.update).toHaveBeenCalledTimes(2)
+
+    wrapper.unmount()
+    await vi.advanceTimersByTimeAsync(HOUR)
+    document.dispatchEvent(new Event('visibilitychange'))
+    expect(registration.update).toHaveBeenCalledTimes(2)
+  })
+
+  it('offers a waiting update and switches only when the user asks for it', async () => {
+    const wrapper = mountApp()
+    expect(wrapper.find('.update-prompt').exists()).toBe(false)
+
+    swState.needRefresh.value = true
+    await flushPromises()
+    expect(wrapper.get('.update-prompt').text()).toBe('有新版本可用稍后立即刷新')
+    expect(swState.updateServiceWorker).not.toHaveBeenCalled()
+
+    await wrapper.get('.update-btn-primary').trigger('click')
+    // 重载由 applyUpdate 负责：它要等到新版本接管页面才动手，
+    // 注册脚本的切换请求只是它拿到的一个参数
+    expect(mockApplyUpdate).toHaveBeenCalledTimes(1)
+    expect(mockApplyUpdate).toHaveBeenCalledWith(swState.updateServiceWorker)
+    expect(swState.updateServiceWorker).not.toHaveBeenCalled()
+  })
+
+  it('tells the user once the app has been cached for offline use', async () => {
+    mountApp()
+    expect(ElMessage.success).not.toHaveBeenCalled()
+
+    swState.offlineReady.value = true
+    await flushPromises()
+    expect(ElMessage.success).toHaveBeenCalledTimes(1)
+    expect(ElMessage.success).toHaveBeenCalledWith({ message: '已可离线使用', duration: 4000 })
+  })
+
+  it('shows a single offline banner between the top bar and the content while offline', async () => {
+    const wrapper = mountApp()
+    expect(wrapper.find('.offline-banner').exists()).toBe(false)
+
+    await goOffline()
+
+    const banner = wrapper.get('.offline-banner')
+    expect(banner.classes()).toEqual(['offline-banner'])
+    expect(banner.attributes('role')).toBe('status')
+    expect(banner.text()).toBe('当前离线，显示的是已缓存的内容；保存和删除需要联网')
+    expect(wrapper.findAll('.offline-banner')).toHaveLength(1)
+
+    const main = wrapper.get('main').element
+    expect(banner.element.compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    await goOnline()
+    expect(wrapper.find('.offline-banner').exists()).toBe(false)
+  })
+
+  it('floats the offline banner on pages without a top bar', async () => {
+    mockRoute.path = '/login'
+    const wrapper = mountApp()
+
+    await goOffline()
+
+    expect(wrapper.get('.offline-banner').classes()).toEqual(['offline-banner', 'offline-banner-fixed'])
   })
 })

@@ -326,6 +326,39 @@ def test_nginx_replaces_forwarded_for_and_hides_share_tokens_from_access_log():
 
 
 @pytest.mark.unit
+def test_nginx_keeps_fixed_name_pwa_files_out_of_browser_caches():
+    """manifest、Service Worker 脚本与应用壳都是固定文件名、内容随发版变化。
+    被浏览器缓存后，发版时要么长期拿不到新版本，要么新版本的 Service Worker
+    安装时取到旧的 index.html、与构建时记录的校验值不符而装不上。"""
+    nginx = (REPOSITORY_ROOT / "frontend" / "nginx.conf").read_text(encoding="utf-8")
+
+    def directives_of(location: str) -> list[str]:
+        assert location in nginx, f"nginx.conf 缺少 {location}"
+        body = nginx.split(location, 1)[1].split("\n    }", 1)[0]
+        lines = [line.strip() for line in body.splitlines()]
+        return [line for line in lines if line and not line.startswith("#")]
+
+    # 逐块比较完整指令：不带 add_header，才能继承 server 级的安全头；
+    # 不回落到 index.html，文件缺失时才会如实返回 404
+    assert directives_of("location = /manifest.webmanifest {") == [
+        "default_type application/manifest+json;",
+        "expires -1;",
+        "try_files $uri =404;",
+    ]
+    assert directives_of("location = /sw.js {") == [
+        "expires -1;",
+        "try_files $uri =404;",
+    ]
+    assert directives_of("location = /index.html {") == [
+        "expires -1;",
+        "try_files $uri =404;",
+    ]
+    # 分享落地页在自己的 location 里直接出 index.html（不走内部重定向，
+    # 也就不会命中上面那条规则），必须在原地禁止缓存
+    assert "expires -1;" in directives_of("location ~ ^/share/ {")
+
+
+@pytest.mark.unit
 def test_compose_smoke_checks_the_single_data_root_layout():
     smoke_script = (
         REPOSITORY_ROOT / ".github" / "scripts" / "compose-smoke.sh"
