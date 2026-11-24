@@ -1,5 +1,6 @@
 import { clearTripDrafts, discardLegacyTripDraft } from './tripDraft'
 import { TOKEN_STORAGE_KEY } from './storageKeys'
+import { clearPrivateCaches } from './pwa'
 
 export { TOKEN_STORAGE_KEY }
 
@@ -25,6 +26,9 @@ export function invalidateAuthSession(options: { clearDrafts?: boolean } = {}): 
   } else {
     clearTripDrafts()
   }
+  // 离线缓存里的接口快照与缩略图不区分 401 过期与登出，一律清掉：
+  // 它们没有按用户隔离，留着会让下一个登录的账号离线时看到上一个账号的数据
+  void clearPrivateCaches()
   localStorage.removeItem(TOKEN_STORAGE_KEY)
   window.dispatchEvent(new Event(AUTH_INVALIDATED_EVENT))
 }

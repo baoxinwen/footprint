@@ -74,6 +74,7 @@ vi.mock('element-plus', async (importOriginal) => {
 import TripFormView from '../../views/TripFormView.vue'
 import { addLocation, deleteLocation, getTrip, updateLocation, updateTrip } from '../../api/trips'
 import { uploadPhoto } from '../../api/photos'
+import { FakeCacheStorage } from '../pwa/fakeCacheStorage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const ElButtonStub = defineComponent({
@@ -388,6 +389,29 @@ describe('TripFormView', () => {
     expect(addLocation).not.toHaveBeenCalled()
     expect(updateLocation).not.toHaveBeenCalled()
     expect(deleteLocation).not.toHaveBeenCalled()
+  })
+
+  it('clears cached private data once an edited trip is saved', async () => {
+    // 编辑保存可能连带删掉地点与照片：离线缓存里的旧快照与缩略图不能再留
+    const storage = new FakeCacheStorage()
+    vi.stubGlobal('caches', storage)
+    try {
+      await storage.seed('api-data', ['/api/trips', '/api/trips/1'])
+      await storage.seed('api-thumbs', ['/api/photos/9/thumbnail'])
+      await storage.seed('fonts', ['/assets/x.woff2'])
+      vi.mocked(getTrip).mockResolvedValue({ data: mockTripData } as any)
+      vi.mocked(updateTrip).mockResolvedValue({ data: mockTripData } as any)
+      const wrapper = mountView()
+      await flushPromises()
+
+      await (wrapper.vm as any).handleSave()
+
+      await vi.waitFor(async () => {
+        expect(await storage.keys()).toEqual(['fonts'])
+      })
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('deletes the remaining location after an earlier location is filtered out', async () => {

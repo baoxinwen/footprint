@@ -22,6 +22,7 @@ import {
 import { renderMarkdown } from '../utils/markdown'
 import { absoluteUrl, downloadBlob } from '../utils/dom'
 import { durationDays as durationDaysBetween } from '../utils/format'
+import { clearPrivateCaches, forgetCachedThumbnail } from '../utils/pwa'
 import request from '../api/request'
 import PhotoViewer from '../components/PhotoViewer.vue'
 import AuthenticatedImage from '../components/AuthenticatedImage.vue'
@@ -237,6 +238,8 @@ async function handleDeletePhoto(photoId: number, locationId: number) {
   try {
     await deletePhoto(photoId)
     ElMessage.success('已删除照片')
+    // 缩略图是缓存优先的：不清的话已删除的照片离线时仍能看到
+    void forgetCachedThumbnail(photoId)
     bumpPhotoCount(locationId, -1)
     loadPhotos(locationId)
   } catch {
@@ -277,6 +280,8 @@ async function handleDelete() {
   try {
     await deleteTrip(tripId.value)
     ElMessage.success('已删除旅行')
+    // 旅行连同地点、照片一起删了：离线缓存里它的接口快照与缩略图一并清掉
+    void clearPrivateCaches()
     router.push('/trips')
   } catch {
     ElMessage.error('删除旅行失败，请稍后重试')

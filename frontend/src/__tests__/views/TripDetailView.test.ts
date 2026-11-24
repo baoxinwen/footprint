@@ -43,6 +43,8 @@ import TripDetailView from '../../views/TripDetailView.vue'
 import { getTrip, updateSortOrder } from '../../api/trips'
 import { deletePhoto, getPhotos } from '../../api/photos'
 
+import { FakeCacheStorage } from '../pwa/fakeCacheStorage'
+
 enableAutoUnmount(afterEach)
 
 const AuthenticatedImageStub = defineComponent({
@@ -50,6 +52,8 @@ const AuthenticatedImageStub = defineComponent({
   props: { src: String, alt: String },
   template: '<img class="authenticated-image-stub" :data-src="src" :alt="alt" />',
 })
+
+const href = (path: string) => new URL(path, location.origin).href
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -267,6 +271,70 @@ describe('TripDetailView', () => {
     await flushPromises()
     expect(deletePhoto).toHaveBeenCalledWith(9)
     expect(wrapper.getComponent({ name: 'PhotoViewer' }).props('visible')).toBe(false)
+  })
+
+  it('forgets the cached thumbnail once a photo is deleted', async () => {
+    const storage = new FakeCacheStorage()
+    vi.stubGlobal('caches', storage)
+    try {
+      await storage.seed('api-thumbs', ['/api/photos/9/thumbnail', '/api/photos/10/thumbnail'])
+      vi.mocked(getTrip).mockResolvedValue({ data: structuredClone(mockTripData) } as any)
+      vi.mocked(getPhotos).mockResolvedValue({ data: [{
+        id: 9,
+        file_name: 'private.jpg',
+        original_url: '/api/photos/9/original',
+        thumbnail_url: '/api/photos/9/thumbnail',
+      }] } as any)
+      const wrapper = mount(TripDetailView, {
+        global: {
+          stubs: {
+            ElIcon: true,
+            ElUpload: true,
+            ElDialog: true,
+            PhotoViewer: true,
+            AuthenticatedImage: AuthenticatedImageStub,
+          },
+        },
+      })
+      await vi.waitFor(() => expect(wrapper.find('.location-toggle').exists()).toBe(true))
+      await wrapper.get('.location-toggle').trigger('click')
+      await flushPromises()
+
+      await wrapper.get('.photo-delete').trigger('click')
+      await flushPromises()
+
+      // 已删除的照片不能继续留在设备的离线缓存里
+      await vi.waitFor(async () => {
+        expect(await storage.urls('api-thumbs')).toEqual([href('/api/photos/10/thumbnail')])
+      })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('clears cached private data once the trip is deleted', async () => {
+    const storage = new FakeCacheStorage()
+    vi.stubGlobal('caches', storage)
+    try {
+      await storage.seed('api-data', ['/api/trips', '/api/trips/1', '/api/timeline'])
+      await storage.seed('api-thumbs', ['/api/photos/9/thumbnail'])
+      await storage.seed('fonts', ['/assets/x.woff2'])
+      vi.mocked(getTrip).mockResolvedValue({ data: structuredClone(mockTripData) } as any)
+      const wrapper = mount(TripDetailView, {
+        global: { stubs: { ElIcon: true, ElUpload: true, ElDialog: true } },
+      })
+      await vi.waitFor(() => expect(wrapper.find('.action-btn.danger').exists()).toBe(true))
+
+      await wrapper.get('.action-btn.danger').trigger('click')
+      await flushPromises()
+
+      // 旅行连同它的地点、照片一起删了：接口快照与缩略图整库清掉，字体缓存保留
+      await vi.waitFor(async () => {
+        expect(await storage.keys()).toEqual(['fonts'])
+      })
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('clears stale detail state and reloads when the route id changes', async () => {

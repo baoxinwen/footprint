@@ -25,6 +25,7 @@ vi.mock('../../api/auth', () => ({
 
 import { useAuthStore } from '../../stores/auth'
 import { login as loginApi, register as registerApi } from '../../api/auth'
+import { FakeCacheStorage } from '../pwa/fakeCacheStorage'
 
 describe('Auth Store', () => {
   beforeEach(() => {
@@ -48,6 +49,27 @@ describe('Auth Store', () => {
       vi.mocked(loginApi).mockRejectedValue(new Error('Invalid credentials'))
       const store = useAuthStore()
       await expect(store.login('bad', 'bad')).rejects.toThrow()
+    })
+
+    it('clears cached private data on login so a previous session cannot leak into this one', async () => {
+      // 登出那一刻还没返回的请求，可能在清缓存之后才把数据写回：登录时再清一次兜底
+      vi.mocked(loginApi).mockResolvedValue({ data: { access_token: TEST_TOKEN } } as any)
+      const storage = new FakeCacheStorage()
+      vi.stubGlobal('caches', storage)
+      try {
+        await storage.seed('api-data', ['/api/trips'])
+        await storage.seed('api-thumbs', ['/api/photos/9/thumbnail'])
+        await storage.seed('fonts', ['/assets/x.woff2'])
+
+        const store = useAuthStore()
+        await store.login('testuser', TEST_PW)
+
+        await vi.waitFor(async () => {
+          expect(await storage.keys()).toEqual(['fonts'])
+        })
+      } finally {
+        vi.unstubAllGlobals()
+      }
     })
   })
 

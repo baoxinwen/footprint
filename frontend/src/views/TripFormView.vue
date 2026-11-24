@@ -16,6 +16,7 @@ import { discardLegacyTripDraft, getTripDraftKey } from '../utils/tripDraft'
 import AuthenticatedImage from '../components/AuthenticatedImage.vue'
 import { scrollToSection } from '../utils/dom'
 import { durationDays as calcDurationDays } from '../utils/format'
+import { clearPrivateCaches } from '../utils/pwa'
 import { Delete } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -457,6 +458,8 @@ async function handleSave() {
 
       ElMessage.success('已保存')
       hasUnsavedChanges.value = false
+      // 编辑保存可能连带删掉地点与照片：离线缓存里对应的旧快照与缩略图一并清掉
+      void clearPrivateCaches()
       router.push(`/trips/${tripId.value}`)
     } else {
       const validLocations = locations.value.filter((l) => !l._deleted)

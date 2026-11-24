@@ -3,6 +3,7 @@ import { onScopeDispose, ref } from 'vue'
 import { login as loginApi, register as registerApi } from '../api/auth'
 import router from '../router'
 import { AUTH_INVALIDATED_EVENT, invalidateAuthSession, markLogoutNavigation, clearLogoutNavigation } from '../utils/authSession'
+import { clearPrivateCaches } from '../utils/pwa'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('token') || '')
@@ -21,6 +22,9 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = data.access_token
     localStorage.setItem('token', data.access_token)
     isLoggedIn.value = true
+    // 登出时已清过一次离线缓存里的私人数据，但那一刻还没返回的请求可能在清理之后
+    // 才把数据写回；登录时再清一次，确保这个账号看不到上一个账号留下的内容
+    void clearPrivateCaches()
     router.push('/')
   }
 
