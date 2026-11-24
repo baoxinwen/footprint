@@ -7,6 +7,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#f5f5f3" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0b0b0a" media="(prefers-color-scheme: dark)" />
+    <!-- PWA：安装到主屏 / 桌面。Android 与桌面浏览器读 manifest；iOS 不认 manifest 的安装部分，
+         靠下面这组标签决定「添加到主屏幕」后的图标、标题与独立窗口 -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="旅行足迹" />
     <title>旅行足迹</title>
     <!-- 字体不在这里加载：Noto 可变字体随构建打包（见 src/main.ts）。
          此前这里同步引用 Google Fonts，而它是渲染阻塞资源——域名不可达时
