@@ -5,6 +5,8 @@ import { getShares, revokeShare, rotateShare } from '../api/shares'
 import request from '../api/request'
 import { useAuthStore } from '../stores/auth'
 import { useTheme } from '../composables/useTheme'
+import { applyUpdate } from '../pwa/applyUpdate'
+import { checkForUpdate } from '../pwa/checkForUpdate'
 import { formatDateCN } from '../utils/format'
 import { downloadBlob, scrollToSection } from '../utils/dom'
 import type { ShareListItem } from '../types'
@@ -31,6 +33,7 @@ const shares = ref<ShareListItem[]>([])
 const sharesLoading = ref(false)
 const sharesError = ref('')
 const shareActions = ref<Record<string, 'rotate' | 'revoke' | undefined>>({})
+const checkingUpdate = ref(false)
 
 async function loadAccount() {
   try {
@@ -213,6 +216,28 @@ async function handleImport(event: Event) {
   }
 }
 
+/* 应用更新 */
+async function handleCheckUpdate() {
+  checkingUpdate.value = true
+  try {
+    const result = await checkForUpdate()
+    if (result === 'available') {
+      // 用户是主动来查的，查到就直接切过去；applyUpdate 会在新版本接管页面后重载
+      await applyUpdate()
+      return
+    }
+    if (result === 'current') {
+      ElMessage.success('已是最新版本')
+    } else if (result === 'failed') {
+      ElMessage.error('检查更新失败，请检查网络后重试')
+    } else {
+      ElMessage.info('当前环境不支持自动更新，请刷新页面获取最新版本')
+    }
+  } finally {
+    checkingUpdate.value = false
+  }
+}
+
 /* 锚点目录 */
 const railItems = [
   { id: 'sec-account', label: '账号' },
@@ -220,6 +245,7 @@ const railItems = [
   { id: 'sec-data', label: '数据' },
   { id: 'sec-appearance', label: '外观' },
   { id: 'sec-password', label: '安全' },
+  { id: 'sec-app', label: '应用' },
   { id: 'sec-about', label: '关于' },
 ]
 
@@ -231,7 +257,7 @@ const railItems = [
     <header class="page-header">
       <p class="page-kicker">偏好与数据</p>
       <h1 class="page-title">设置</h1>
-      <p class="page-desc">管理账号、分享链接、数据备份与外观</p>
+      <p class="page-desc">管理账号、分享链接、数据备份、外观与应用更新</p>
     </header>
 
     <div class="settings-layout">
@@ -434,6 +460,23 @@ const railItems = [
               <span v-else>修改密码</span>
             </button>
           </form>
+        </section>
+
+        <!-- 应用 -->
+        <section id="sec-app" class="settings-section">
+          <h3 class="section-title">应用</h3>
+          <div class="action-list">
+            <div class="action-item">
+              <div class="action-info">
+                <div class="action-title">检查更新</div>
+                <div class="action-desc">有新版本时切换到最新版本，页面会自动刷新</div>
+              </div>
+              <button class="action-btn update-check-btn" :disabled="checkingUpdate" @click="handleCheckUpdate">
+                <el-icon v-if="!checkingUpdate"><RefreshRight /></el-icon>
+                <span>{{ checkingUpdate ? '检查中…' : '检查更新' }}</span>
+              </button>
+            </div>
+          </div>
         </section>
 
         <!-- 关于 -->

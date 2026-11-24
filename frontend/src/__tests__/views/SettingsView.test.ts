@@ -34,12 +34,18 @@ vi.mock('element-plus', async (importOriginal) => {
       success: vi.fn(),
       error: vi.fn(),
       warning: vi.fn(),
+      info: vi.fn(),
     },
     ElMessageBox: {
       confirm: vi.fn(() => Promise.resolve()),
     },
   }
 })
+
+const mockCheckForUpdate = vi.hoisted(() => vi.fn())
+const mockApplyUpdate = vi.hoisted(() => vi.fn())
+vi.mock('../../pwa/checkForUpdate', () => ({ checkForUpdate: mockCheckForUpdate }))
+vi.mock('../../pwa/applyUpdate', () => ({ applyUpdate: mockApplyUpdate }))
 
 import request from '../../api/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -213,6 +219,73 @@ describe('SettingsView', () => {
     await vi.waitFor(() => {
       expect(wrapper.text()).toContain('分享链接加载失败')
       expect(wrapper.find('[data-testid="retry-shares"]').exists()).toBe(true)
+    })
+  })
+
+  describe('检查更新', () => {
+    const mountSettings = () => mount(SettingsView, { global: { stubs: { 'el-icon': true } } })
+    const checkButton = (wrapper: ReturnType<typeof mountSettings>) => wrapper.get('.update-check-btn')
+
+    it('已是最新版本时如实告知，不重新加载页面', async () => {
+      mockCheckForUpdate.mockResolvedValue('current')
+      const wrapper = mountSettings()
+
+      await checkButton(wrapper).trigger('click')
+      await flushPromises()
+
+      expect(mockCheckForUpdate).toHaveBeenCalledTimes(1)
+      expect(ElMessage.success).toHaveBeenCalledWith('已是最新版本')
+      expect(mockApplyUpdate).not.toHaveBeenCalled()
+    })
+
+    it('有新版本时直接切换过去——用户是主动来查的，不必再确认一次', async () => {
+      mockCheckForUpdate.mockResolvedValue('available')
+      const wrapper = mountSettings()
+
+      await checkButton(wrapper).trigger('click')
+      await flushPromises()
+
+      expect(mockApplyUpdate).toHaveBeenCalledTimes(1)
+      expect(ElMessage.success).not.toHaveBeenCalled()
+    })
+
+    it('查询本身失败（如离线）时提示重试，不说成「已是最新」', async () => {
+      mockCheckForUpdate.mockResolvedValue('failed')
+      const wrapper = mountSettings()
+
+      await checkButton(wrapper).trigger('click')
+      await flushPromises()
+
+      expect(ElMessage.error).toHaveBeenCalledWith('检查更新失败，请检查网络后重试')
+      expect(ElMessage.success).not.toHaveBeenCalled()
+      expect(mockApplyUpdate).not.toHaveBeenCalled()
+    })
+
+    it('环境不支持自动更新时说明原因，而不是永远说「已是最新」', async () => {
+      mockCheckForUpdate.mockResolvedValue('unsupported')
+      const wrapper = mountSettings()
+
+      await checkButton(wrapper).trigger('click')
+      await flushPromises()
+
+      expect(ElMessage.info).toHaveBeenCalledWith('当前环境不支持自动更新，请刷新页面获取最新版本')
+      expect(ElMessage.success).not.toHaveBeenCalled()
+    })
+
+    it('检查期间按钮显示进度并禁用，结束后恢复', async () => {
+      let finishCheck!: (result: string) => void
+      mockCheckForUpdate.mockImplementation(() => new Promise<string>((resolve) => { finishCheck = resolve }))
+      const wrapper = mountSettings()
+
+      await checkButton(wrapper).trigger('click')
+      await flushPromises()
+      expect(checkButton(wrapper).text()).toBe('检查中…')
+      expect(checkButton(wrapper).attributes('disabled')).toBeDefined()
+
+      finishCheck('current')
+      await flushPromises()
+      expect(checkButton(wrapper).text()).toBe('检查更新')
+      expect(checkButton(wrapper).attributes('disabled')).toBeUndefined()
     })
   })
 })
