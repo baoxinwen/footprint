@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { changePassword } from '../api/auth'
 import { getShares, revokeShare, rotateShare } from '../api/shares'
 import request from '../api/request'
@@ -7,6 +7,7 @@ import { useAuthStore } from '../stores/auth'
 import { useTheme } from '../composables/useTheme'
 import { applyUpdate } from '../pwa/applyUpdate'
 import { checkForUpdate } from '../pwa/checkForUpdate'
+import { useInstallPrompt } from '../composables/useInstallPrompt'
 import { formatDateCN } from '../utils/format'
 import { downloadBlob, scrollToSection } from '../utils/dom'
 import type { ShareListItem } from '../types'
@@ -16,6 +17,7 @@ import {
   CopyDocument,
   Delete,
   Document,
+  Download,
   FolderOpened,
   Link,
   RefreshRight,
@@ -214,6 +216,22 @@ async function handleImport(event: Event) {
     importLoading.value = false
     input.value = ''
   }
+}
+
+/* 安装应用 */
+const { guide: installGuide, promptInstall } = useInstallPrompt()
+
+/** 各环境下的指引。原生对话框只在部分浏览器、满足安装条件后才有 */
+const INSTALL_GUIDES = {
+  native: '装到桌面或任务栏，以独立窗口打开，看过的内容可以离线查看',
+  instructions: '在浏览器菜单里选择「安装应用」或「添加到主屏幕」',
+  ios: '在 Safari 底部点「分享」，再选「添加到主屏幕」',
+} as const
+const installDescription = computed(() => (installGuide.value === 'hidden' ? '' : INSTALL_GUIDES[installGuide.value]))
+
+async function handleInstall() {
+  // 对话框事件只能用一次；拿不到时退回到文字指引
+  if ((await promptInstall()) === 'unavailable') ElMessage.info(INSTALL_GUIDES.instructions)
 }
 
 /* 应用更新 */
@@ -466,6 +484,17 @@ const railItems = [
         <section id="sec-app" class="settings-section">
           <h3 class="section-title">应用</h3>
           <div class="action-list">
+            <div v-if="installGuide !== 'hidden'" class="action-item install-row">
+              <div class="action-info">
+                <div class="action-title">安装应用</div>
+                <div class="action-desc">{{ installDescription }}</div>
+              </div>
+              <button v-if="installGuide === 'native'" class="action-btn install-btn" @click="handleInstall">
+                <el-icon><Download /></el-icon>
+                <span>安装</span>
+              </button>
+            </div>
+            <div v-if="installGuide !== 'hidden'" class="action-divider"></div>
             <div class="action-item">
               <div class="action-info">
                 <div class="action-title">检查更新</div>

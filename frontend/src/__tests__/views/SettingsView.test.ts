@@ -47,6 +47,18 @@ const mockApplyUpdate = vi.hoisted(() => vi.fn())
 vi.mock('../../pwa/checkForUpdate', () => ({ checkForUpdate: mockCheckForUpdate }))
 vi.mock('../../pwa/applyUpdate', () => ({ applyUpdate: mockApplyUpdate }))
 
+/** 安装指引的替身：guide 可从测试里切换，默认「已安装、不显示」 */
+const installState = vi.hoisted(() => ({
+  guide: 'hidden' as 'native' | 'instructions' | 'ios' | 'hidden',
+  promptInstall: vi.fn(),
+}))
+vi.mock('../../composables/useInstallPrompt', async () => {
+  const { computed } = await import('vue')
+  return {
+    useInstallPrompt: () => ({ guide: computed(() => installState.guide), promptInstall: installState.promptInstall }),
+  }
+})
+
 import request from '../../api/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getShares, revokeShare, rotateShare } from '../../api/shares'
@@ -286,6 +298,43 @@ describe('SettingsView', () => {
       await flushPromises()
       expect(checkButton(wrapper).text()).toBe('检查更新')
       expect(checkButton(wrapper).attributes('disabled')).toBeUndefined()
+    })
+  })
+
+  describe('安装应用', () => {
+    const mountSettings = () => mount(SettingsView, { global: { stubs: { 'el-icon': true } } })
+
+    it('浏览器提供原生安装对话框时显示安装按钮，点击后弹出', async () => {
+      installState.guide = 'native'
+      const wrapper = mountSettings()
+
+      expect(wrapper.get('.install-row .action-desc').text()).toBe('装到桌面或任务栏，以独立窗口打开，看过的内容可以离线查看')
+      await wrapper.get('.install-btn').trigger('click')
+      expect(installState.promptInstall).toHaveBeenCalledTimes(1)
+    })
+
+    it('没有原生对话框时给文字指引，不放一个点了没反应的按钮', () => {
+      installState.guide = 'instructions'
+      const wrapper = mountSettings()
+
+      expect(wrapper.get('.install-row .action-desc').text()).toBe('在浏览器菜单里选择「安装应用」或「添加到主屏幕」')
+      expect(wrapper.find('.install-btn').exists()).toBe(false)
+    })
+
+    it('iOS 上给出 Safari 的固定步骤', () => {
+      installState.guide = 'ios'
+      const wrapper = mountSettings()
+
+      expect(wrapper.get('.install-row .action-desc').text()).toBe('在 Safari 底部点「分享」，再选「添加到主屏幕」')
+      expect(wrapper.find('.install-btn').exists()).toBe(false)
+    })
+
+    it('已经作为独立应用运行时不显示这一行', () => {
+      installState.guide = 'hidden'
+      const wrapper = mountSettings()
+
+      expect(wrapper.find('.install-row').exists()).toBe(false)
+      expect(wrapper.text()).not.toContain('安装应用')
     })
   })
 })
