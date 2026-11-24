@@ -33,9 +33,11 @@
   --color-route-end: #c64b36;       /* 路线终点标记（地图瓦片上下文，明暗同值） */
   --color-on-photo: #f4f2ec;        /* 照片封面上的文字族（hero 插槽等，坐在深色遮罩上，明暗同值） */
 
-  /* ---- 字体 ---- */
-  --font-serif: 'Noto Serif SC', 'Songti SC', 'SimSun', Georgia, serif;
-  --font-sans: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei',
+  /* ---- 字体 ----
+     打包进来的可变字体族名带 Variable 后缀；保留不带后缀的原名作次选，
+     本机装有 Noto 的系统可直接用系统字体，省一次下载 */
+  --font-serif: 'Noto Serif SC Variable', 'Noto Serif SC', 'Songti SC', 'SimSun', Georgia, serif;
+  --font-sans: 'Noto Sans SC Variable', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei',
     -apple-system, BlinkMacSystemFont, sans-serif;
 
   /* ---- 字重（铁律 3：暗色整体 -40，防白字发胖；依赖可变字体） ---- */

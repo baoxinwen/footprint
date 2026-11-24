@@ -5,11 +5,10 @@ import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import { Delete, ArrowDown, ArrowUp, ArrowLeft, ArrowRight, Close, Location, Suitcase, Calendar, DataAnalysis, Search, Setting, SwitchButton, Sunny, Moon, Refresh, MapLocation, Edit, Download, Share, Plus, Monitor, CircleCheck } from '@element-plus/icons-vue'
 
-// 本地打包字体（woff2 按 unicode-range 分包，替代 Google Fonts CDN）
-import '@fontsource/noto-sans-sc/400.css'
-import '@fontsource/noto-sans-sc/500.css'
-import '@fontsource/noto-serif-sc/600.css'
-import '@fontsource/noto-serif-sc/700.css'
+// 本地打包的可变字体（woff2 按 unicode-range 分包）：字重轴连续，铁律 3 的中间字重
+// （暗色 -40 → 360/460/560/660）不依赖外网也能命中；每个字重一个分片，替代整百档的静态字重
+import '@fontsource-variable/noto-sans-sc'
+import '@fontsource-variable/noto-serif-sc'
 
 import App from './App.vue'
 import router from './router'
