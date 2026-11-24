@@ -3,7 +3,7 @@ import { flushPromises } from '@vue/test-utils'
 import { applyUpdate } from '../../pwa/applyUpdate'
 
 /** 最小的 ServiceWorkerContainer 替身：只报告「等待中的版本」，并能模拟新版本接管页面 */
-function fakeContainer(waiting: object | null) {
+function fakeContainer(waiting: { postMessage: (data: unknown) => void } | null) {
   const listeners = new Set<() => void>()
   return {
     getRegistration: vi.fn(async () => ({ waiting })),
@@ -20,9 +20,10 @@ function fakeContainer(waiting: object | null) {
   }
 }
 
+const waitingWorker = () => ({ postMessage: vi.fn() })
+
 describe('切换到新版本', () => {
   const reload = vi.fn()
-  const askToSwitch = vi.fn()
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -32,15 +33,17 @@ describe('切换到新版本', () => {
     vi.useRealTimers()
   })
 
-  it('有等待中的版本时：先监听页面被接管，再请求切换，被接管后才重载', async () => {
-    const container = fakeContainer({})
+  it('有等待中的版本时：先监听页面被接管，再请它立即激活，被接管后才重载', async () => {
+    const worker = waitingWorker()
+    const container = fakeContainer(worker)
 
-    const switching = applyUpdate(askToSwitch, { container, reload })
+    const switching = applyUpdate({ container, reload })
     await flushPromises()
 
-    expect(askToSwitch).toHaveBeenCalledTimes(1)
+    expect(worker.postMessage).toHaveBeenCalledTimes(1)
+    expect(worker.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' })
     // 顺序不能反：接管可能紧随切换请求到来，监听挂晚了就会错过
-    expect(container.addEventListener.mock.invocationCallOrder[0]).toBeLessThan(askToSwitch.mock.invocationCallOrder[0])
+    expect(container.addEventListener.mock.invocationCallOrder[0]).toBeLessThan(worker.postMessage.mock.invocationCallOrder[0])
     expect(container.addEventListener).toHaveBeenCalledWith('controllerchange', expect.any(Function))
     expect(reload).not.toHaveBeenCalled()
 
@@ -51,30 +54,34 @@ describe('切换到新版本', () => {
     expect(container.listenerCount()).toBe(0)
   })
 
-  it('没有等待中的版本时（比如已被别的标签页切换）：不请求切换，直接重载', async () => {
+  it('没有等待中的版本时（比如已被别的标签页切换）：不发消息，直接重载', async () => {
     const container = fakeContainer(null)
 
-    await applyUpdate(askToSwitch, { container, reload })
+    await applyUpdate({ container, reload })
 
-    expect(askToSwitch).not.toHaveBeenCalled()
     expect(container.addEventListener).not.toHaveBeenCalled()
     expect(reload).toHaveBeenCalledTimes(1)
   })
 
-  it('取不到注册信息时（环境不支持 Service Worker）不抛出，照样重载', async () => {
-    const container = fakeContainer({})
-    container.getRegistration.mockRejectedValue(new Error('unsupported'))
+  it('环境不支持 Service Worker（没有 container）时照样重载', async () => {
+    await expect(applyUpdate({ container: undefined, reload })).resolves.toBeUndefined()
 
-    await expect(applyUpdate(askToSwitch, { container, reload })).resolves.toBeUndefined()
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
 
-    expect(askToSwitch).not.toHaveBeenCalled()
+  it('取不到注册信息时不抛出，照样重载', async () => {
+    const container = fakeContainer(waitingWorker())
+    container.getRegistration.mockRejectedValue(new Error('registration lookup failed'))
+
+    await expect(applyUpdate({ container, reload })).resolves.toBeUndefined()
+
     expect(reload).toHaveBeenCalledTimes(1)
   })
 
   it('新版本迟迟不接管页面时：到时间照样重载，不留一个没有反应的按钮', async () => {
-    const container = fakeContainer({})
+    const container = fakeContainer(waitingWorker())
 
-    const switching = applyUpdate(askToSwitch, { container, reload, timeoutMs: 300 })
+    const switching = applyUpdate({ container, reload, timeoutMs: 300 })
     await flushPromises()
     await vi.advanceTimersByTimeAsync(299)
     expect(reload).not.toHaveBeenCalled()

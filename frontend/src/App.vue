@@ -44,13 +44,12 @@ function goToSettings() {
 // prompt 模式：新版本就绪后只提示，由用户决定何时切换。不自动切换是为了避免
 // 新旧版本混跑——旧页面向新 Service Worker 要旧的分块文件，而发版后服务器上
 // 已经没有了，懒加载的路由会 404。不理会提示的话，应用完全关闭后自然切到新版。
-// 注册脚本只用来发现新版本、发出切换消息；切换后的重载由 applyUpdate 负责，
-// 原因见该模块的说明。
+// 注册脚本在这里只负责发现新版本；切换与重载由 applyUpdate 负责，原因见该模块的说明。
 let stopUpdateChecks: (() => void) | undefined
 // 生命周期钩子必须在 setup 同步注册；onRegisteredSW 是异步回调，只能在那里给变量赋值
 onUnmounted(() => stopUpdateChecks?.())
 
-const { needRefresh, offlineReady, updateServiceWorker } = useRegisterSW({
+const { needRefresh, offlineReady } = useRegisterSW({
   immediate: true,
   onRegisteredSW: (_url, registration) => {
     if (registration) stopUpdateChecks = scheduleUpdateChecks(registration)
@@ -379,7 +378,7 @@ function cycleTheme() {
     </nav>
 
     <!-- 新版本提示：不阻塞，点「立即刷新」才切换并重载 -->
-    <UpdatePrompt :need-refresh="needRefresh" @refresh="applyUpdate(updateServiceWorker)" />
+    <UpdatePrompt :need-refresh="needRefresh" @refresh="applyUpdate()" />
   </div>
 </template>
 

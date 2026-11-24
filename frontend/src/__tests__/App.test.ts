@@ -307,10 +307,9 @@ describe('App offline and update wiring', () => {
     expect(swState.updateServiceWorker).not.toHaveBeenCalled()
 
     await wrapper.get('.update-btn-primary').trigger('click')
-    // 重载由 applyUpdate 负责：它要等到新版本接管页面才动手，
-    // 注册脚本的切换请求只是它拿到的一个参数
+    // 切换与重载都由 applyUpdate 负责：它自己向等待中的版本发消息，并等到页面被接管才重载
     expect(mockApplyUpdate).toHaveBeenCalledTimes(1)
-    expect(mockApplyUpdate).toHaveBeenCalledWith(swState.updateServiceWorker)
+    expect(mockApplyUpdate).toHaveBeenCalledWith()
     expect(swState.updateServiceWorker).not.toHaveBeenCalled()
   })
 
