@@ -127,4 +127,25 @@ test.describe('离线使用', () => {
     await page.reload()
     await expect(page.getByRole('button', { name: '创建旅行', exact: true })).toBeVisible()
   })
+
+  test('首页的地图需要联网：断网时就地说明原因，缓存里的统计照常显示', async ({ page }) => {
+    const token = await registerUserThroughApi(page)
+    await page.addInitScript((value) => localStorage.setItem('token', value), token)
+    await page.goto('/')
+    await waitUntilControlled(page)
+    await createTripThroughApi(page, '有旅行记录')
+    await page.reload()
+    const tripCount = page.locator('.map-stats-strip .strip-value').first()
+    await expect(tripCount).toHaveText('1')
+
+    await goOffline(page.context())
+    await page.reload()
+
+    // 地图脚本要从高德的服务器取，断网时取不到：说明原因，而不是空白加「请刷新重试」
+    const overlay = page.locator('.map-offline-overlay')
+    await expect(overlay).toContainText('地图需要联网加载')
+    await expect(overlay).not.toContainText('刷新')
+    await expect(overlay.getByRole('button', { name: '查看旅行' })).toBeVisible()
+    await expect(tripCount).toHaveText('1')
+  })
 })

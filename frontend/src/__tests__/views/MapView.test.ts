@@ -108,7 +108,10 @@ vi.mock('vue-router', () => ({
 }))
 
 import MapView from '../../views/MapView.vue'
+import AMapLoader from '@amap/amap-jsapi-loader'
+import { ElMessage } from 'element-plus'
 import { getMapStats, getCityMarkers, getAllRoutes, getPhotoMarkers } from '../../api/stats'
+import { goOffline, goOnline, setOnline } from '../pwa/onlineStatus'
 
 const ElSelectStub = defineComponent({
   name: 'ElSelect',
@@ -336,5 +339,104 @@ describe('MapView', () => {
 
     expect((wrapper.vm as any).photoMode).toBe(false)
     expect(imageMocks.acquire).not.toHaveBeenCalled()
+  })
+
+  describe('地图脚本加载失败时', () => {
+    let errorSpy: ReturnType<typeof vi.spyOn>
+    let wrapper: ReturnType<typeof mountView> | undefined
+
+    beforeEach(() => {
+      setOnline(true)
+      errorSpy = vi.spyOn(ElMessage, 'error').mockReturnValue({} as never)
+    })
+    afterEach(() => {
+      // 不卸载的话，残留的实例会在后面的用例里跟着响应「恢复联网」
+      wrapper?.unmount()
+      wrapper = undefined
+      errorSpy.mockRestore()
+      setOnline(true)
+    })
+
+    it('离线：就地说明原因并指向仍可查看的页面，不让人白白刷新', async () => {
+      await goOffline()
+      vi.mocked(AMapLoader.load).mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+      wrapper = mountView()
+      await flushPromises()
+
+      const overlay = wrapper.get('.map-offline-overlay')
+      expect(overlay.attributes('role')).toBe('status')
+      expect(overlay.text()).toBe(
+        '地图需要联网加载当前离线，联网后会自动加载。旅行、时间线和统计仍可离线查看。查看旅行',
+      )
+      expect(errorSpy).not.toHaveBeenCalled()
+      // 统计数据来自离线缓存，照常显示
+      expect(wrapper.get('.strip-stats').text()).toBe('3旅行10地点5城市3省份')
+    })
+
+    it('恢复联网后自动把地图加载出来', async () => {
+      await goOffline()
+      vi.mocked(AMapLoader.load).mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      wrapper = mountView()
+      await flushPromises()
+      expect(wrapper.find('.map-offline-overlay').exists()).toBe(true)
+
+      await goOnline()
+      await flushPromises()
+
+      expect(wrapper.find('.map-offline-overlay').exists()).toBe(false)
+      expect(amapMocks.maps).toHaveLength(1)
+    })
+
+    it('断网时连统计数据都没拿到：恢复联网后数据和地图一起补上', async () => {
+      await goOffline()
+      vi.mocked(getMapStats).mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      wrapper = mountView()
+      await flushPromises()
+      expect(wrapper.get('.map-offline-overlay').exists()).toBe(true)
+
+      await goOnline()
+      await flushPromises()
+
+      expect(wrapper.find('.map-offline-overlay').exists()).toBe(false)
+      expect(wrapper.get('.strip-stats').text()).toBe('3旅行10地点5城市3省份')
+      expect(amapMocks.maps).toHaveLength(1)
+    })
+
+    it('离线且本来就没有旅行记录：只显示空状态，不在上面再叠一层离线说明', async () => {
+      await goOffline()
+      vi.mocked(getMapStats).mockResolvedValueOnce({
+        data: { trip_count: 0, location_count: 0, city_count: 0, province_count: 0 },
+      } as never)
+      vi.mocked(AMapLoader.load).mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      wrapper = mountView()
+      await flushPromises()
+
+      expect(wrapper.find('.empty-overlay').exists()).toBe(true)
+      expect(wrapper.find('.map-offline-overlay').exists()).toBe(false)
+    })
+
+    it('联网时失败：照旧提示刷新重试，不显示离线说明', async () => {
+      vi.mocked(AMapLoader.load).mockRejectedValueOnce(new TypeError('script error'))
+      wrapper = mountView()
+      await flushPromises()
+
+      expect(errorSpy).toHaveBeenCalledWith('加载地图数据失败，请刷新页面重试')
+      expect(wrapper.find('.map-offline-overlay').exists()).toBe(false)
+    })
+
+    it('卸载后不再响应恢复联网', async () => {
+      await goOffline()
+      vi.mocked(AMapLoader.load).mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      wrapper = mountView()
+      await flushPromises()
+      wrapper.unmount()
+      const loadsBeforeReconnect = vi.mocked(AMapLoader.load).mock.calls.length
+
+      await goOnline()
+      await flushPromises()
+
+      expect(AMapLoader.load).toHaveBeenCalledTimes(loadsBeforeReconnect)
+    })
   })
 })

@@ -15,6 +15,8 @@ import { MAP_STYLE_STORAGE_KEY } from '../utils/storageKeys'
 const router = useRouter()
 const stats = ref<MapStats>({ trip_count: 0, location_count: 0, city_count: 0, province_count: 0 })
 const statsLoaded = ref(false)
+// 地图脚本要从高德的服务器取，断网时拿不到。这时刷新无济于事，就地说明原因
+const mapUnavailable = ref(false)
 const cityMarkers = ref<CityMarker[]>([])
 const routes = ref<TripRoute[]>([])
 const selectedTripId = ref<number | null>(null)
@@ -98,27 +100,49 @@ async function loadRoutes() {
   }
 }
 
-onMounted(async () => {
+/** 加载失败的处理：离线时就地说明，否则提示刷新，或指出缺失的配置 */
+function handleLoadFailure(error: unknown) {
+  console.error('加载数据失败:', error)
+  if (!navigator.onLine) {
+    mapUnavailable.value = true
+  } else if (error instanceof Error && error.message === '请填写 AMAP_KEY') {
+    // 配置缺失刷新解决不了，给出可行动的指引（评审 R4-2）
+    ElMessage.error('未配置高德地图 AMAP_KEY，请在服务端 .env 中配置后重启')
+  } else {
+    ElMessage.error('加载地图数据失败，请刷新页面重试')
+  }
+}
+
+/** 取统计与城市数据（已取过则跳过），再把地图建起来 */
+async function loadMapPage() {
   try {
-    const [statsRes, citiesRes] = await Promise.all([
-      getMapStats(),
-      getCityMarkers(),
-    ])
-    stats.value = statsRes.data
-    cityMarkers.value = citiesRes.data
-    statsLoaded.value = true
+    if (!statsLoaded.value) {
+      const [statsRes, citiesRes] = await Promise.all([
+        getMapStats(),
+        getCityMarkers(),
+      ])
+      stats.value = statsRes.data
+      cityMarkers.value = citiesRes.data
+      statsLoaded.value = true
+    }
 
     await initMap()
     renderCityMarkers()
   } catch (error) {
-    console.error('加载数据失败:', error)
-    if (error instanceof Error && error.message === '请填写 AMAP_KEY') {
-      // 配置缺失刷新解决不了，给出可行动的指引（评审 R4-2）
-      ElMessage.error('未配置高德地图 AMAP_KEY，请在服务端 .env 中配置后重启')
-    } else {
-      ElMessage.error('加载地图数据失败，请刷新页面重试')
-    }
+    handleLoadFailure(error)
   }
+}
+
+/** 断网期间地图没加载出来：恢复联网后自动补上 */
+async function loadMapWhenOnline() {
+  if (!mapUnavailable.value || disposed) return
+  mapUnavailable.value = false
+  await loadMapPage()
+}
+
+onMounted(() => {
+  window.addEventListener('online', loadMapWhenOnline)
+  void loadMapPage()
 })
 
 async function initMap() {
@@ -495,6 +519,7 @@ function toggleStats() {
 
 onUnmounted(() => {
   disposed = true
+  window.removeEventListener('online', loadMapWhenOnline)
   clearFitViewTimer()
   clearOverlays()
   removeLayerInstances()
@@ -515,6 +540,15 @@ onUnmounted(() => {
       role="application"
       :aria-label="`旅行足迹地图：${stats.trip_count} 次旅行、${stats.city_count} 座城市、${stats.location_count} 个地点，图层与路线控件见上方面板`"
     ></div>
+
+    <!-- 离线：地图脚本取不到，盖在空白的地图区域上说明原因。
+         已确认还没有旅行记录时不显示——那时空状态本身已经把话说完了；
+         统计数据没拿到时不能据此判断，说明照常显示 -->
+    <div v-if="mapUnavailable && !(statsLoaded && stats.trip_count === 0)" class="map-offline-overlay" role="status">
+      <p class="offline-title">地图需要联网加载</p>
+      <p class="offline-desc">当前离线，联网后会自动加载。旅行、时间线和统计仍可离线查看。</p>
+      <button type="button" class="offline-action" @click="router.push('/trips')">查看旅行</button>
+    </div>
 
     <!-- 手机：顶部常驻统计条（统计数字 + 抽屉开关）；桌面隐藏，统计在控制面板内 -->
     <div class="map-stats-strip">
@@ -838,6 +872,55 @@ onUnmounted(() => {
   justify-content: center;
   background: color-mix(in srgb, var(--color-canvas) 82%, transparent);
   z-index: 5;
+}
+
+/* 离线说明：与空状态同一层，盖在空白的地图区域上，不遮挡控制面板与统计条 */
+.map-offline-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  text-align: center;
+  background: color-mix(in srgb, var(--color-canvas) 82%, transparent);
+  z-index: 5;
+}
+
+.offline-title {
+  margin-bottom: 8px;
+  font-family: var(--font-serif);
+  font-size: var(--text-lg);
+  font-weight: var(--fw-semibold);
+}
+
+.offline-desc {
+  max-width: 28em;
+  margin-bottom: 24px;
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  color: var(--color-ink-muted);
+}
+
+/* 描边按钮：这是「去别处看看」的次要动作，不与空状态里的「创建」抢视觉 */
+.offline-action {
+  min-height: 44px;
+  padding: 10px 24px;
+  border: 1px solid var(--color-primary);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-primary);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+  transition: background-color var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
+}
+
+.offline-action:hover {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
 }
 
 /* ========== 手机专用件：顶部统计条 / 抽屉遮罩（桌面隐藏，样式见响应式块） ========== */
