@@ -226,6 +226,7 @@ const INSTALL_GUIDES = {
   native: '装到桌面或任务栏，以独立窗口打开，看过的内容可以离线查看',
   instructions: '在浏览器菜单里选择「安装应用」或「添加到主屏幕」',
   ios: '在 Safari 底部点「分享」，再选「添加到主屏幕」',
+  insecure: '请通过 HTTPS 地址访问后再安装，localhost 除外',
 } as const
 const installDescription = computed(() => (installGuide.value === 'hidden' ? '' : INSTALL_GUIDES[installGuide.value]))
 

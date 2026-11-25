@@ -49,7 +49,7 @@ vi.mock('../../pwa/applyUpdate', () => ({ applyUpdate: mockApplyUpdate }))
 
 /** 安装指引的替身：guide 可从测试里切换，默认「已安装、不显示」 */
 const installState = vi.hoisted(() => ({
-  guide: 'hidden' as 'native' | 'instructions' | 'ios' | 'hidden',
+  guide: 'hidden' as 'native' | 'instructions' | 'ios' | 'insecure' | 'hidden',
   promptInstall: vi.fn(),
 }))
 vi.mock('../../composables/useInstallPrompt', async () => {
@@ -326,6 +326,14 @@ describe('SettingsView', () => {
       const wrapper = mountSettings()
 
       expect(wrapper.get('.install-row .action-desc').text()).toBe('在 Safari 底部点「分享」，再选「添加到主屏幕」')
+      expect(wrapper.find('.install-btn').exists()).toBe(false)
+    })
+
+    it('明文 HTTP 访问时说明需要 HTTPS，不放安装按钮', () => {
+      installState.guide = 'insecure'
+      const wrapper = mountSettings()
+
+      expect(wrapper.get('.install-row .action-desc').text()).toBe('请通过 HTTPS 地址访问后再安装，localhost 除外')
       expect(wrapper.find('.install-btn').exists()).toBe(false)
     })
 

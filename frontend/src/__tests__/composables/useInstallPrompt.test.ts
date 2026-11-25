@@ -1,14 +1,21 @@
 import { defineComponent, h, nextTick } from 'vue'
 import { enableAutoUnmount, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { isIosBrowser, isStandalone, useInstallPrompt, type InstallPromptEvent } from '../../composables/useInstallPrompt'
+import {
+  isIosBrowser,
+  isSecureOrigin,
+  isStandalone,
+  useInstallPrompt,
+  type InstallPromptEvent,
+} from '../../composables/useInstallPrompt'
 
 enableAutoUnmount(afterEach)
 
-/** 环境探测的替身：默认「既不是独立应用，也不在 iOS 上」 */
+/** 环境探测的替身：默认「安全上下文、不是独立应用、不在 iOS 上」 */
 const environment = vi.hoisted(() => ({
   standalone: vi.fn(() => false),
   ios: vi.fn(() => false),
+  secure: vi.fn(() => true),
 }))
 
 /** 挂一个只把当前指引渲染出来的宿主组件 */
@@ -39,11 +46,21 @@ describe('useInstallPrompt', () => {
   beforeEach(() => {
     environment.standalone.mockReturnValue(false)
     environment.ios.mockReturnValue(false)
+    environment.secure.mockReturnValue(true)
   })
 
   it('浏览器还没提供安装对话框时：给文字指引', () => {
     const { wrapper } = mountHost()
     expect(wrapper.text()).toBe('instructions')
+  })
+
+  it('明文 HTTP 访问时浏览器不提供安装入口：说明需要 HTTPS，而不是让人去菜单里找不存在的选项', async () => {
+    environment.secure.mockReturnValue(false)
+    const { wrapper } = mountHost()
+    window.dispatchEvent(installPromptEvent())
+    await nextTick()
+
+    expect(wrapper.text()).toBe('insecure')
   })
 
   it('浏览器提供安装对话框后改为显示安装按钮，并接管浏览器自带的安装提示', async () => {
@@ -129,8 +146,15 @@ describe('useInstallPrompt', () => {
 
 describe('安装环境探测', () => {
   const originalMatchMedia = window.matchMedia
+  const originalSecureContext = Object.getOwnPropertyDescriptor(window, 'isSecureContext')
   afterEach(() => {
     window.matchMedia = originalMatchMedia
+    // isSecureContext 原本定义在原型上：没有自有属性就删掉，有则还原
+    if (originalSecureContext) {
+      Object.defineProperty(window, 'isSecureContext', originalSecureContext)
+    } else {
+      delete (window as { isSecureContext?: boolean }).isSecureContext
+    }
   })
 
   /** 只让指定的媒体查询命中 */
@@ -162,6 +186,14 @@ describe('安装环境探测', () => {
     matchMediaMatching('(prefers-color-scheme: dark)')
     Object.defineProperty(navigator, 'standalone', { configurable: true, value: true })
     expect(isStandalone()).toBe(true)
+  })
+
+  it('是否安全上下文以浏览器的判定为准（localhost 的 HTTP 也算安全）', () => {
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: false })
+    expect(isSecureOrigin()).toBe(false)
+
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true })
+    expect(isSecureOrigin()).toBe(true)
   })
 
   it.each([

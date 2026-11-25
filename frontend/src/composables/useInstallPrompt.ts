@@ -16,9 +16,10 @@ export interface InstallPromptEvent extends Event {
  * native：浏览器提供了原生安装对话框，显示「安装」按钮
  * instructions：没有原生对话框，告诉用户去浏览器菜单里找
  * ios：iOS 上的浏览器都没有这个对话框，步骤是固定的
+ * insecure：明文 HTTP 访问，浏览器根本不提供安装入口，菜单里也没有
  * hidden：已经作为独立应用运行，不必再装
  */
-export type InstallGuide = 'native' | 'instructions' | 'ios' | 'hidden'
+export type InstallGuide = 'native' | 'instructions' | 'ios' | 'insecure' | 'hidden'
 
 export type InstallOutcome = InstallChoice['outcome']
 
@@ -27,6 +28,8 @@ export interface InstallEnvironment {
   standalone?: () => boolean
   /** 是否 iOS 上的浏览器（都没有原生安装对话框） */
   ios?: () => boolean
+  /** 是否安全上下文（HTTPS，或 localhost）；以浏览器的判定为准 */
+  secure?: () => boolean
 }
 
 /** 以独立窗口或全屏方式运行；iOS 主屏启动靠 navigator.standalone 标记 */
@@ -38,6 +41,11 @@ export function isStandalone(): boolean {
   )
 }
 
+/** 以浏览器的判定为准：HTTPS 与 localhost 是安全上下文，明文 HTTP 不是 */
+export function isSecureOrigin(): boolean {
+  return window.isSecureContext
+}
+
 /** iPadOS 13 起默认把自己报成 Macintosh，靠触控点数区分 */
 export function isIosBrowser(): boolean {
   const userAgent = navigator.userAgent
@@ -47,6 +55,7 @@ export function isIosBrowser(): boolean {
 export function useInstallPrompt(environment: InstallEnvironment = {}) {
   const isRunningAsApp = environment.standalone ?? isStandalone
   const isIos = environment.ios ?? isIosBrowser
+  const isSecure = environment.secure ?? isSecureOrigin
 
   const runningAsApp = ref(isRunningAsApp())
   const canPrompt = ref(false)
@@ -87,6 +96,8 @@ export function useInstallPrompt(environment: InstallEnvironment = {}) {
 
   const guide = computed<InstallGuide>(() => {
     if (runningAsApp.value) return 'hidden'
+    // 明文 HTTP 下浏览器不提供安装入口，菜单里也没有对应选项——不能让人白找
+    if (!isSecure()) return 'insecure'
     if (isIos()) return 'ios'
     return canPrompt.value ? 'native' : 'instructions'
   })
