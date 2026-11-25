@@ -32,8 +32,30 @@ test.describe('PWA 可安装性', () => {
     const sizes = manifest.icons.map((icon: { sizes: string }) => `${icon.sizes} ${icon.purpose ?? 'any'}`)
     expect(sizes).toEqual(expect.arrayContaining(['192x192 any', '512x512 any', '512x512 maskable']))
 
-    // 清单与文件不能脱节：逐个核对存在性、类型与真实像素尺寸
-    for (const icon of manifest.icons) {
+    // 长按应用图标时的快捷入口：三个高频页面，各带 96px 图标（启动器展示快捷方式所要求的尺寸）
+    expect(
+      manifest.shortcuts.map((shortcut: { name: string; url: string; icons: Array<{ sizes: string; src: string }> }) => ({
+        name: shortcut.name,
+        url: shortcut.url,
+        icons: shortcut.icons.map((icon) => `${icon.sizes} ${icon.src}`),
+      })),
+    ).toEqual([
+      { name: '新建旅行', url: '/trips/new', icons: ['96x96 /icons/shortcut-new-96.png'] },
+      { name: '时间线', url: '/timeline', icons: ['96x96 /icons/shortcut-timeline-96.png'] },
+      { name: '统计', url: '/stats', icons: ['96x96 /icons/shortcut-stats-96.png'] },
+    ])
+    // 每个快捷方式都要落在应用范围内，并且确实是一个能打开的页面
+    for (const shortcut of manifest.shortcuts) {
+      expect(shortcut.url.startsWith(manifest.scope), shortcut.url).toBe(true)
+      expect((await request.get(shortcut.url)).status(), shortcut.url).toBe(200)
+    }
+
+    // 清单与文件不能脱节：应用图标与快捷方式图标逐个核对存在性、类型与真实像素尺寸
+    const referencedIcons = [
+      ...manifest.icons,
+      ...manifest.shortcuts.flatMap((shortcut: { icons: unknown[] }) => shortcut.icons),
+    ]
+    for (const icon of referencedIcons) {
       const file = await request.get(icon.src)
       expect(file.status(), icon.src).toBe(200)
       expect(file.headers()['content-type'], icon.src).toContain('image/png')

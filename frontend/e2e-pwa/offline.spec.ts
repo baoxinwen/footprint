@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { registerAndLogin } from '../e2e/helpers'
 import { API_DATA_CACHE, THUMBNAIL_CACHE } from '../src/pwa/cachePolicy'
-import { cacheNames, createTripThroughApi, fetchUncached, goOffline, waitUntilControlled } from './helpers'
+import { cacheNames, createTripThroughApi, fetchUncached, goOffline, registerUserThroughApi, waitUntilControlled } from './helpers'
 
 // 上传用的真实图片：仓库里现成的图标，省得在测试里内嵌二进制
 const sampleImage = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../public/icons/icon-192.png'))
@@ -113,5 +113,18 @@ test.describe('离线使用', () => {
     await page.reload()
     await expect(page.getByText('还没有旅行记录')).toBeVisible()
     await expect(page.getByText('上一个人的旅行')).toHaveCount(0)
+  })
+
+  test('快捷方式的地址可以直接当作启动入口，断网时也一样', async ({ page }) => {
+    // 从主屏快捷方式打开时，应用是从这个地址冷启动的，不经过首页
+    const token = await registerUserThroughApi(page)
+    await page.addInitScript((value) => localStorage.setItem('token', value), token)
+    await page.goto('/trips/new')
+    await waitUntilControlled(page)
+    await expect(page.getByRole('button', { name: '创建旅行', exact: true })).toBeVisible()
+
+    await goOffline(page.context())
+    await page.reload()
+    await expect(page.getByRole('button', { name: '创建旅行', exact: true })).toBeVisible()
   })
 })

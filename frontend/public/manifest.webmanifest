@@ -29,5 +29,41 @@
       "type": "image/png",
       "purpose": "maskable"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "新建旅行",
+      "short_name": "新建",
+      "url": "/trips/new",
+      "icons": [
+        {
+          "src": "/icons/shortcut-new-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "时间线",
+      "url": "/timeline",
+      "icons": [
+        {
+          "src": "/icons/shortcut-timeline-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "统计",
+      "url": "/stats",
+      "icons": [
+        {
+          "src": "/icons/shortcut-stats-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    }
   ]
 }
