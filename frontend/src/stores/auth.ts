@@ -14,7 +14,15 @@ export const useAuthStore = defineStore('auth', () => {
     isLoggedIn.value = false
   }
 
-  window.addEventListener(AUTH_INVALIDATED_EVENT, applyLoggedOutState)
+  window.addEventListener(AUTH_INVALIDATED_EVENT, () => {
+    applyLoggedOutState()
+    // 别的标签页登出/换号后，本页不能停留在受保护页继续显示旧账号数据，
+    // 立即跳登录页（评审 M-17）；分享页等匿名页面不受影响。
+    // 本标签页自己登出时路由已在 /login 或即将跳转，此处的 replace 是幂等兜底
+    if (!localStorage.getItem('token') && router.currentRoute.value.meta?.requiresAuth) {
+      void router.replace('/login')
+    }
+  })
   onScopeDispose(() => window.removeEventListener(AUTH_INVALIDATED_EVENT, applyLoggedOutState))
 
   async function login(username: string, password: string) {

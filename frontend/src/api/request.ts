@@ -57,6 +57,7 @@ request.interceptors.response.use(
       // meta.silent：批量图片等场景由视图层汇总错误，不逐请求弹 toast；
       // 401 的会话失效跳转不受其影响
       const silent = error.config?.meta?.silent === true
+      const toastOptions = { grouping: true } as const
       if (status === 401) {
         // Don't redirect on login failures
         const alreadyOnLogin = router.currentRoute?.value?.path === '/login'
@@ -68,15 +69,25 @@ request.interceptors.response.use(
           void Promise.resolve(router.replace('/login')).finally(() => {
             authRedirectInProgress = false
           })
-          ElMessage.error('登录已过期，请重新登录')
+          ElMessage.error({ message: '登录已过期，请重新登录', ...toastOptions })
         }
+      } else if (status === 413) {
+        // nginx 的 413 响应是 HTML 页，取不到后端的具体文案（评审 M-30）
+        if (!silent) ElMessage.error({ message: '文件过大，请压缩后重试', ...toastOptions })
       } else if (status === 429) {
-        if (!silent) ElMessage.error(extractDetail(data) ?? '操作过于频繁，请稍后再试')
+        if (!silent) ElMessage.error({ message: extractDetail(data) ?? '操作过于频繁，请稍后再试', ...toastOptions })
       } else {
-        if (!silent) ElMessage.error(extractDetail(data) ?? '请求失败，请稍后重试')
+        if (!silent) ElMessage.error({ message: extractDetail(data) ?? '请求失败，请稍后重试', ...toastOptions })
       }
     } else {
-      ElMessage.error('网络连接失败，请检查网络后重试')
+      // 无响应失败（断网/超时）同样尊重 silent（评审 I-7）；
+      // 超时链路是通的，给单独文案，不冒充网络错误
+      const silent = error.config?.meta?.silent === true
+      if (!silent) {
+        const message =
+          error?.code === 'ECONNABORTED' ? '请求超时，请稍后重试' : '网络连接失败，请检查网络后重试'
+        ElMessage.error({ message, grouping: true })
+      }
     }
     return Promise.reject(error)
   }

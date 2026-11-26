@@ -93,8 +93,8 @@ describe('Request Module', () => {
     }
 
     await expect(rejectResponse(error)).rejects.toBe(error)
-    expect(errorMessageMock).toHaveBeenCalledWith(
-      'Field required；String should have at least 6 characters'
+    expect(errorMessageMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ message: 'Field required；String should have at least 6 characters' })
     )
   })
 
@@ -102,12 +102,12 @@ describe('Request Module', () => {
     await expect(
       rejectResponse({ response: { status: 400, data: { detail: '该用户名已被占用' } }, config: { url: '/x' } })
     ).rejects.toBeTruthy()
-    expect(errorMessageMock).toHaveBeenLastCalledWith('该用户名已被占用')
+    expect(errorMessageMock).toHaveBeenLastCalledWith(expect.objectContaining({ message: '该用户名已被占用' }))
 
     await expect(
       rejectResponse({ response: { status: 500, data: {} }, config: { url: '/x' } })
     ).rejects.toBeTruthy()
-    expect(errorMessageMock).toHaveBeenLastCalledWith('请求失败，请稍后重试')
+    expect(errorMessageMock).toHaveBeenLastCalledWith(expect.objectContaining({ message: '请求失败，请稍后重试' }))
   })
 
   it('treats aborted requests as silent rejections, not network errors', async () => {
@@ -128,5 +128,37 @@ describe('Request Module', () => {
       })
     ).rejects.toBeTruthy()
     expect(errorMessageMock).not.toHaveBeenCalled()
+  })
+
+  it('suppresses toast for silent requests that failed without a response', async () => {
+    // 回归（评审 I-7）：断网/超时（无 error.response）走不到 silent 判断，
+    // 离线滚动到未缓存的缩略图时曾逐张弹「网络连接失败」
+    await expect(
+      rejectResponse({
+        code: 'ERR_NETWORK',
+        config: { url: '/photos/1/thumbnail', meta: { silent: true } },
+      })
+    ).rejects.toBeTruthy()
+    expect(errorMessageMock).not.toHaveBeenCalled()
+  })
+
+  it('reports timeouts as their own message for non-silent requests', async () => {
+    // 回归（评审 I-7/M-30）：链路是通的只是慢，不该说「网络连接失败」
+    await expect(
+      rejectResponse({ code: 'ECONNABORTED', config: { url: '/trips/1/export/json' } })
+    ).rejects.toBeTruthy()
+    expect(errorMessageMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ message: '请求超时，请稍后重试' })
+    )
+  })
+
+  it('reports 413 payloads with a size-specific message', async () => {
+    // 回归（评审 M-30）：nginx 的 413 是 HTML 页，取不到 detail，需要专门的文案
+    await expect(
+      rejectResponse({ response: { status: 413, data: '<html>413</html>' }, config: { url: '/photos/upload/1' } })
+    ).rejects.toBeTruthy()
+    expect(errorMessageMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ message: '文件过大，请压缩后重试' })
+    )
   })
 })

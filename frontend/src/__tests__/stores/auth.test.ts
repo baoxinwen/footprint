@@ -133,6 +133,29 @@ describe('Auth Store', () => {
       expect(store.isLoggedIn).toBe(false)
     })
 
+    it('redirects a protected page to login when another tab logs out (M-17)', () => {
+      // 回归（评审 M-17）：别的标签页登出后，本页不能继续显示旧账号数据
+      localStorage.setItem('token', TEST_TOKEN)
+      useAuthStore()
+      ;(routerMocks.currentRoute.value as any).meta = { requiresAuth: true }
+
+      localStorage.removeItem('token')
+      window.dispatchEvent(new StorageEvent('storage', { key: 'token', newValue: null }))
+
+      expect(routerMocks.replace).toHaveBeenCalledWith('/login')
+    })
+
+    it('does not redirect the anonymous share page when another tab logs out (M-17)', () => {
+      localStorage.setItem('token', TEST_TOKEN)
+      useAuthStore()
+      ;(routerMocks.currentRoute.value as any).meta = {}
+
+      localStorage.removeItem('token')
+      window.dispatchEvent(new StorageEvent('storage', { key: 'token', newValue: null }))
+
+      expect(routerMocks.replace).not.toHaveBeenCalledWith('/login')
+    })
+
     it('preserves the session, drafts, store, and route when logout navigation is cancelled', async () => {
       const navigationFailure = { type: 4 }
       routerMocks.replace.mockResolvedValueOnce(navigationFailure)

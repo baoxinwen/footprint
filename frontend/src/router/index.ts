@@ -36,11 +36,13 @@ router.beforeEach((to, _from, next) => {
     // 因 atob 抛错而误杀有效会话；解析失败仍按无效 token 处理
     const payload = decodeJwtPayload(token)
     if (!payload) {
-      invalidateAuthSession()
+      // 令牌过期与 401 同语义：只清 token，草稿按 JWT sub 键控保留，
+      // 重新登录后可恢复未提交内容（评审 I-8，与 request.ts 的 401 路径对齐）
+      invalidateAuthSession({ clearDrafts: false })
       return next('/login')
     }
     if (Number(payload.exp) * 1000 < Date.now()) {
-      invalidateAuthSession()
+      invalidateAuthSession({ clearDrafts: false })
       return next('/login')
     }
   }

@@ -89,17 +89,23 @@ describe('Router Guard', () => {
     }).toThrow()
   })
 
-  it('clears private drafts when the route guard rejects an expired session', async () => {
+  it('keeps user-scoped drafts when the route guard rejects an expired session', async () => {
+    // 回归（评审 I-8）：令牌过期与 401 是同一件事，草稿策略必须一致——
+    // 草稿按 JWT sub 键控，重新登录后可恢复；只清无属主的 legacy 草稿防串号。
+    // 旧行为在守卫路径清掉全部草稿，「隔天回来继续写」会静默丢内容。
     await import('../../router')
     const expiredPayload = { sub: '17', exp: Math.floor(Date.now() / 1000) - 3600 }
     localStorage.setItem('token', `header.${btoa(JSON.stringify(expiredPayload))}.signature`)
     localStorage.setItem('footprint:trip-draft:17', 'private-draft')
+    localStorage.setItem('footprint:trip-draft', 'legacy-draft')
     const next = vi.fn()
 
     routerMock.guard!({ meta: { requiresAuth: true } }, {}, next)
 
     expect(next).toHaveBeenCalledWith('/login')
     expect(localStorage.getItem('token')).toBeNull()
-    expect(localStorage.getItem('footprint:trip-draft:17')).toBeNull()
+    // 本用户的草稿保留（重新登录后恢复），legacy 草稿清除（防跨账号串号）
+    expect(localStorage.getItem('footprint:trip-draft:17')).toBe('private-draft')
+    expect(localStorage.getItem('footprint:trip-draft')).toBeNull()
   })
 })
