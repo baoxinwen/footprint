@@ -19,7 +19,7 @@ env:
 
 jobs:
   test-backend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # 钉住运行器：ubuntu-latest 已切 26.04，Playwright 1.60 无其浏览器包（v1.0.0 绿于 24.04）
     permissions:
       contents: read
 
@@ -49,7 +49,7 @@ jobs:
         run: pytest
 
   test-frontend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # 钉住运行器：ubuntu-latest 已切 26.04，Playwright 1.60 无其浏览器包（v1.0.0 绿于 24.04）
     timeout-minutes: 20
     permissions:
       contents: read
@@ -100,7 +100,7 @@ jobs:
         run: npm run test:e2e
 
   test-compose:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # 钉住运行器：ubuntu-latest 已切 26.04，Playwright 1.60 无其浏览器包（v1.0.0 绿于 24.04）
     timeout-minutes: 20
     permissions:
       contents: read
@@ -114,7 +114,7 @@ jobs:
 
   build-backend:
     needs: [test-backend, test-frontend, test-compose]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # 钉住运行器：ubuntu-latest 已切 26.04，Playwright 1.60 无其浏览器包（v1.0.0 绿于 24.04）
     permissions:
       contents: read
       packages: write
@@ -153,7 +153,7 @@ jobs:
 
   build-frontend:
     needs: [test-backend, test-frontend, test-compose]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # 钉住运行器：ubuntu-latest 已切 26.04，Playwright 1.60 无其浏览器包（v1.0.0 绿于 24.04）
     permissions:
       contents: read
       packages: write
