@@ -520,7 +520,7 @@ const railItems = [
             </div>
             <div class="about-item">
               <span class="about-label">版本</span>
-              <span class="about-value">v1.1.0</span>
+              <span class="about-value">v1.1.1</span>
             </div>
             <div class="about-item">
               <span class="about-label">技术栈</span>

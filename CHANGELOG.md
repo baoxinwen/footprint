@@ -5,6 +5,13 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.1.1] - 2026-11-26
+
+### Fixed
+
+- v1.1.0 的 Docker 镜像因 CI 失败未能产出：前端 lock 文件改为兼容 npm 10（CI Node 20 自带）的形态，`npm ci` 恢复可用；vue 升至 3.5.46 并随 `npm audit fix` 升级链内依赖，清除 9 项 high 级漏洞（本版即修复后的完整发布）
+- 后端 Pillow 升至 13.0.0、PyJWT 升至 2.15.1，清除 pip-audit 报告的全部 57 条已知漏洞（pillow 42、pyjwt 15）；Pillow 13 要求 Python ≥ 3.11，CI 与 Docker 镜像均为 3.12
+
 ## [1.1.0] - 2026-11-26
 
 ### Added
@@ -73,7 +80,8 @@
 - 部署：Docker Compose 一键自托管，nginx 反代 /api，GitHub Actions 自动构建 GHCR 镜像
 - 测试：pytest 单元/集成/部署实例测试，Vitest 组件测试，Playwright 端到端测试
 
-[Unreleased]: https://github.com/baoxinwen/footprint/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/baoxinwen/footprint/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/baoxinwen/footprint/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/baoxinwen/footprint/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/baoxinwen/footprint/releases/tag/v1.0.0
 [1.0.0]: https://github.com/baoxinwen/footprint/releases/tag/v1.0.0
