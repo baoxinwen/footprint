@@ -15,12 +15,14 @@
 - **导入导出** — JSON/Markdown 格式，支持批量导入
 - **深色模式** — 自动跟随系统或手动切换
 - **响应式设计** — 适配桌面端和移动端
+- **PWA** — 可安装到手机桌面与电脑；联网时看过的内容断网后仍可查看；有新版本时提示更新
 
 ## 技术栈
 
 | 层级 | 技术 |
 |------|------|
 | 前端 | Vue 3 + TypeScript + Vite + Element Plus + Pinia |
+| PWA | vite-plugin-pwa（Workbox 生成的 Service Worker）+ 应用清单 |
 | 后端 | Python FastAPI + SQLAlchemy + Pillow |
 | 数据库 | SQLite |
 | 地图 | 高德地图 JS API v2.0 |
@@ -58,6 +60,37 @@ docker compose up -d
 
 `8001` 默认是明文 HTTP，并发布到宿主机所有网络接口。局域网或公网部署时应在其前方配置 HTTPS 反向代理和防火墙，不要直接暴露到公网；外层代理也应关闭 `/api/shares/view/` 路径的访问日志，避免分享 token 进入日志。
 
+### 5. 安装到手机或电脑
+
+应用是一个 PWA，可以像原生应用一样装到桌面，以独立窗口打开：
+
+- **Android（Chrome / Edge）**：打开应用，点浏览器菜单里的「安装应用」或「添加到主屏幕」
+- **iPhone / iPad（Safari）**：点底部的「分享」按钮，选「添加到主屏幕」
+- **电脑（Chrome / Edge）**：点地址栏右侧的安装图标，或浏览器菜单里的「安装应用」
+
+也可以在应用的 **设置 → 应用 → 安装应用** 里操作。装好之后长按图标，可以直接进入新建旅行、时间线或统计。
+
+安装与离线都需要 HTTPS（`localhost` 除外）：明文 HTTP 下浏览器不会提供安装入口，也不会注册 Service Worker。
+
+#### 离线使用
+
+首次打开后，应用会在后台缓存应用壳，并提示「已可离线使用」。之后断网也能打开；联网时**看过的**页面——旅行列表与详情、时间线、统计、照片缩略图——会显示上次拿到的内容，页面顶部会提示当前离线。
+
+离线时只能查看，并且只是快照：
+
+- 保存、删除、上传、分享都需要联网
+- 没打开过的内容不会凭空出现
+- 地图与照片原图需要联网。地图页离线时会就地说明原因，恢复联网后自动加载
+- 登录状态有有效期（24 小时）。过期后应用会回到登录页并清掉缓存里的私人数据，需要联网重新登录——离线查看的最长时间因此是最后一次登录后的 24 小时
+
+退出登录、登录态失效或切换账号时，缓存里的私人数据会被清掉，下一个账号看不到上一个账号的内容。
+
+#### 版本更新
+
+发布新版本后，已打开的应用会提示「有新版本可用」，点「立即刷新」切换到新版；也可以随时在 **设置 → 应用 → 检查更新** 里主动检查，有新版本会直接切换。
+
+前端自带的 nginx 配置已让 `sw.js`、`manifest.webmanifest` 与 `index.html` 不被浏览器缓存。如果它前面还有一层反向代理，同样不要缓存这三个文件，否则发版后浏览器拿不到新版本。
+
 ## 本地开发
 
 ### 后端
@@ -89,8 +122,13 @@ pytest
 cd frontend
 npm run test
 
-# E2E 测试 (需要启动后端和前端服务)
+# E2E 测试。Playwright 会自行启动测试用的后端与前端，并构建一次前端供 PWA 用例使用
 npx playwright test
+# 只跑离线与更新相关的用例（对构建产物验证）
+npx playwright test --project=pwa
+
+# 图标由 scripts/pwa-icons/ 下的 SVG 生成；改动后重新生成，并把产出的 PNG 一并提交
+npm run icons
 ```
 
 ## 项目结构
@@ -107,12 +145,16 @@ npx playwright test
 │   ├── src/
 │   │   ├── api/           # API 请求封装
 │   │   ├── views/         # 页面组件 (10 个页面)
-│   │   ├── components/    # 共享组件 (PhotoViewer, EmptyState, AuthenticatedImage)
+│   │   ├── components/    # 共享组件 (PhotoViewer, EmptyState, AuthenticatedImage, OfflineBanner, UpdatePrompt)
 │   │   ├── stores/        # Pinia 状态管理
-│   │   ├── composables/   # 组合式函数 (useTheme, useAuthenticatedImage)
-│   │   ├── utils/         # 工具函数 (format, markdown, authSession, tripDraft, authenticatedImage)
+│   │   ├── composables/   # 组合式函数 (useTheme, useAuthenticatedImage, useInstallPrompt)
+│   │   ├── utils/         # 工具函数 (format, markdown, authSession, tripDraft, authenticatedImage, pwa)
+│   │   ├── pwa/           # 离线缓存规则、更新检查与切换
 │   │   └── router/        # Vue Router
-│   └── e2e/               # Playwright E2E 测试 (13 个测试文件)
+│   ├── public/            # 应用清单 manifest.webmanifest 与图标 icons/
+│   ├── scripts/           # 图标生成脚本 (generate-icons.mjs 与 SVG 源)
+│   ├── e2e/               # Playwright E2E 测试 (13 个测试文件，对开发服务器)
+│   └── e2e-pwa/           # 对构建产物验证离线、更新与可安装性的 E2E 测试
 ├── test/                  # 后端 pytest 测试
 │   ├── unit/              # 单元测试 (13 个文件)
 │   ├── integration/       # 集成测试 (13 个文件)
