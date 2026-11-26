@@ -21,6 +21,19 @@ def validate_password_byte_length(password: str) -> str:
     return password
 
 
+def validate_utf8_encodable(value: str) -> str:
+    """拒绝无法 UTF-8 编码的字符串（评审 M-1）。
+
+    含孤立 UTF-16 代理项的密码曾让 bcrypt/hash 链路抛 UnicodeEncodeError
+    变成 500，且连 422 错误体都渲染不出来。
+    """
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ValueError("包含无法编码的字符") from exc
+    return value
+
+
 def hash_password(password: str) -> str:
     validate_password_byte_length(password)
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")

@@ -28,6 +28,16 @@ def test_validate_jwt_secret_accepts_at_least_32_utf8_bytes(secret):
 
 
 @pytest.mark.unit
+def test_validate_jwt_secret_rejects_whitespace_padded_short_secret():
+    """回归（评审 M-3）：长度校验必须作用在 strip 后的值上。
+
+    「31 个空格 + 1 个字符」曾通过校验，实际密钥空间只有一个字符。
+    """
+    with pytest.raises(RuntimeError, match="JWT_SECRET"):
+        config_module.validate_jwt_secret(" " * 31 + "x")
+
+
+@pytest.mark.unit
 def test_lifespan_rejects_insecure_jwt_secret_before_initializing_database(
     monkeypatch,
 ):

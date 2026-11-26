@@ -27,6 +27,9 @@ from app.utils.rate_limit import (
     record_register_attempt,
     check_password_change_cooldown,
     record_password_change,
+    check_password_failure_rate,
+    record_password_failure,
+    clear_password_failures,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,8 +53,10 @@ def register(req: RegisterRequest, request: Request, db: Session = Depends(get_d
 
     user = User(username=req.username, password_hash=hash_password(req.password))
     db.add(user)
-    db.flush()
     try:
+        # INSERT 在 flush 时发出，UNIQUE 冲突在这里抛出：
+        # flush 必须在 try 内，否则并发注册同名的兜底永远接不到（评审 I-2）
+        db.flush()
         db.commit()
     except IntegrityError:
         # 并发注册同名用户的兜底：存在性检查与提交之间存在竞态窗口，
@@ -104,9 +109,13 @@ def change_password(
     if req.new_password != req.confirm_password:
         logger.warning(f"修改密码失败: 两次输入不一致 (user_id: {user_id})")
         raise HTTPException(status_code=400, detail="两次输入的新密码不一致")
+    # 答错当前密码计入失败限流（评审 I-3）：持 token 不应能无限次试当前密码
+    check_password_failure_rate(user_id)
     if not verify_password(req.current_password, user.password_hash):
+        record_password_failure(user_id)
         logger.warning(f"修改密码失败: 当前密码错误 (user_id: {user_id})")
         raise HTTPException(status_code=400, detail="当前密码错误")
+    clear_password_failures(user_id)
 
     check_password_change_cooldown(user_id)
 

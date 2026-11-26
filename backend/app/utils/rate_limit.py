@@ -21,6 +21,7 @@ _login_attempts: dict[str, list[datetime]] = defaultdict(list)          # (usern
 _login_attempts_global: dict[str, list[datetime]] = defaultdict(list)   # username 全局维度
 _register_attempts: dict[str, list[datetime]] = defaultdict(list)
 _password_changes: dict[int, datetime] = {}
+_password_failures: dict[int, list[datetime]] = defaultdict(list)       # 改密答错当前密码（评审 I-3）
 
 # Cleanup interval in seconds
 _CLEANUP_INTERVAL = 300  # 5 minutes
@@ -50,6 +51,12 @@ def _cleanup_expired_entries():
         expired_users = [uid for uid, ts in _password_changes.items() if ts < password_cutoff]
         for uid in expired_users:
             del _password_changes[uid]
+
+        # 清理改密失败记录（与登录失败同一窗口）
+        for uid in list(_password_failures.keys()):
+            _password_failures[uid] = [t for t in _password_failures[uid] if t > login_cutoff]
+            if not _password_failures[uid]:
+                del _password_failures[uid]
 
 
 def _cleanup_worker():
@@ -144,6 +151,31 @@ def record_password_change(user_id: int):
         _password_changes[user_id] = datetime.now(timezone.utc)
 
 
+def check_password_failure_rate(user_id: int):
+    """改密接口答错当前密码的失败上限（评审 I-3）：复用登录失败的阈值与窗口，
+    防止持有效 token 的调用方在线爆破当前密码。"""
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(minutes=settings.LOGIN_LOCKOUT_MINUTES)
+
+    with _lock:
+        _password_failures[user_id] = [t for t in _password_failures[user_id] if t > cutoff]
+        if len(_password_failures[user_id]) >= settings.LOGIN_MAX_ATTEMPTS:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"密码错误次数过多，请 {settings.LOGIN_LOCKOUT_MINUTES} 分钟后再试",
+            )
+
+
+def record_password_failure(user_id: int):
+    with _lock:
+        _password_failures[user_id].append(datetime.now(timezone.utc))
+
+
+def clear_password_failures(user_id: int):
+    with _lock:
+        _password_failures.pop(user_id, None)
+
+
 def reset_all():
     """Clear all rate limiting state (for testing)."""
     with _lock:
@@ -151,3 +183,4 @@ def reset_all():
         _login_attempts_global.clear()
         _register_attempts.clear()
         _password_changes.clear()
+        _password_failures.clear()
