@@ -2,6 +2,7 @@ import json
 import io
 import zipfile
 import logging
+from datetime import timezone
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -58,7 +59,8 @@ def get_account_info(
     return {
         "id": user.id,
         "username": user.username,
-        "created_at": user.created_at.isoformat(),
+        # 列存 naive UTC：补上偏移量，否则前端按本地时间解析会偏一天（评审 M-2）
+        "created_at": user.created_at.replace(tzinfo=timezone.utc).isoformat(),
     }
 
 

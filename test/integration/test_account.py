@@ -13,6 +13,15 @@ class TestAccountInfo:
         assert "username" in data
         assert "created_at" in data
 
+    def test_created_at_carries_utc_offset(self, client, auth_headers):
+        """回归（评审 M-2）：created_at 必须带 UTC 偏移量。
+
+        列存的是 naive UTC，不带偏移的 ISO 串会被前端按本地时间解析，
+        东八区 0-8 点注册的用户「注册时间」显示成前一天。
+        """
+        resp = client.get("/api/account/info", headers=auth_headers)
+        assert resp.json()["created_at"].endswith("+00:00")
+
     def test_get_account_info_unauthorized(self, client):
         resp = client.get("/api/account/info")
         assert resp.status_code in (401, 403)

@@ -1,4 +1,5 @@
 import json
+import re
 import zipfile
 import io
 import logging
@@ -16,7 +17,7 @@ from app.models.trip import Trip
 from app.models.location import Location
 from app.core.config import settings
 from app.schemas.export_import import ImportTrip
-from app.utils.upload import UploadSizeExceeded, read_upload_limited
+from app.utils.upload import UploadSizeExceeded, read_upload_limited_sync
 from app.utils.zip_utils import (
     add_photos_to_zip,
     build_export_headers,
@@ -70,8 +71,29 @@ def export_json(
     )
 
 
+_NOTE_PHOTO_RE = re.compile(r"/api/photos/(\d+)/(?:original|thumbnail)")
+
+
+def _rewrite_note_images(note: str, archive_by_photo_id: dict) -> str:
+    """把游记里的站内照片引用改写成包内路径（评审 M-6 / PRD 5.7）。
+
+    引用不属于本旅行的照片 id 时保持原样——那是一条本来就失效的引用，
+    不应被改写成误导性的包内路径。
+    """
+
+    def _sub(match: re.Match) -> str:
+        return archive_by_photo_id.get(int(match.group(1)), match.group(0))
+
+    return _NOTE_PHOTO_RE.sub(_sub, note)
+
+
 def _build_markdown(trip: Trip, locations: list) -> str:
     """构建旅行的 Markdown 内容。"""
+    archive_by_photo_id = {
+        photo.id: photo_archive_path(trip.title, loc, photo)
+        for loc in locations
+        for photo in loc.photos
+    }
     md_lines = [
         f"# {trip.title}",
         "",
@@ -97,13 +119,16 @@ def _build_markdown(trip: Trip, locations: list) -> str:
             md_lines.append("")
             for photo in loc.photos:
                 archive_path = photo_archive_path(trip.title, loc, photo)
-                md_lines.append(f"![{photo.file_name}]({archive_path})")
+                # 目标包进尖括号（CommonMark 允许其中出现空格/圆括号），alt 转义
+                # 方括号——否则名称含空格时整条图片语法不被解析（评审 I-4）
+                alt = photo.file_name.replace("[", "\\[").replace("]", "\\]")
+                md_lines.append(f"![{alt}](<{archive_path}>)")
                 md_lines.append("")
 
         if loc.note:
             md_lines.append("**游记：**")
             md_lines.append("")
-            md_lines.append(loc.note)
+            md_lines.append(_rewrite_note_images(loc.note, archive_by_photo_id))
             md_lines.append("")
 
         md_lines.append("---")
@@ -170,17 +195,18 @@ def _import_trip_data(trip_data: ImportTrip, db: Session, user_id: int) -> None:
 
 
 @router.post("/trips/import")
-async def import_trips(
+def import_trips(
     file: UploadFile = File(...),
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    if not file.filename or not file.filename.endswith(".json"):
+    filename = file.filename or ""
+    if not filename.lower().endswith(".json"):
         logger.warning(f"导入失败: 非 JSON 文件 (filename: {file.filename})")
         raise HTTPException(status_code=400, detail="请上传 JSON 文件")
 
     try:
-        content = await read_upload_limited(file, settings.MAX_IMPORT_SIZE)
+        content = read_upload_limited_sync(file, settings.MAX_IMPORT_SIZE)
     except UploadSizeExceeded:
         limit_mb = settings.MAX_IMPORT_SIZE // (1024 * 1024)
         logger.warning(f"导入失败: 文件超过限制 ({settings.MAX_IMPORT_SIZE} bytes)")
@@ -198,6 +224,10 @@ async def import_trips(
         raise HTTPException(status_code=400, detail="JSON 格式错误")
 
     raw_trips = data if isinstance(data, list) else [data]
+    if not raw_trips:
+        # 空数组没有可导入的内容：明确拒绝，而不是「成功导入 0 条」（评审 M-14）
+        logger.warning("导入失败: 导入内容为空")
+        raise HTTPException(status_code=400, detail="导入内容为空")
     try:
         trips_data = [ImportTrip.model_validate(item) for item in raw_trips]
     except ValidationError as exc:
