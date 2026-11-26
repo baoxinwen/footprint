@@ -1,7 +1,7 @@
 const SHARE_TOKEN = crypto.randomUUID().replaceAll('-', '')
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
 // Mock router
@@ -159,6 +159,40 @@ describe('ShareView', () => {
     await vi.waitFor(() => {
       expect(viewShare).toHaveBeenCalled()
     })
+  })
+
+  it('keeps the invalid-link wording for 404 (M-23)', async () => {
+    // 回归（评审 M-23）：链接失效与网络故障要说清区别
+    vi.mocked(viewShare).mockRejectedValue({ response: { status: 404 } })
+
+    const wrapper = mount(ShareView, {
+      global: { stubs: { ElButton: true, ElIcon: true } },
+    })
+    await flushPromises()
+
+    const panel = wrapper.get('.error-state')
+    expect(panel.text()).toContain('分享链接不存在或已失效')
+    expect(panel.text()).toContain('向分享者确认')
+    expect(panel.text()).not.toContain('重新加载')
+  })
+
+  it('shows a retryable failure for network errors instead of blaming the link (M-23)', async () => {
+    vi.mocked(viewShare).mockRejectedValueOnce(new TypeError('network down'))
+    vi.mocked(viewShare).mockResolvedValueOnce({ data: mockTripData } as any)
+
+    const wrapper = mount(ShareView, {
+      global: { stubs: { ElButton: true, ElIcon: true } },
+    })
+    await flushPromises()
+
+    const panel = wrapper.get('.error-state')
+    expect(panel.text()).toContain('分享页加载失败')
+    expect(panel.text()).not.toContain('不存在或已失效')
+
+    await wrapper.findAll('.error-state button').find((b) => b.text() === '重新加载')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('北京三日游')
   })
 
   it('redirects to expired page for 410 status', async () => {

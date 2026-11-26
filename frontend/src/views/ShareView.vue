@@ -3,7 +3,6 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getSharedPhotos, viewShare } from '../api/shares'
 import type { ShareViewTrip, Photo } from '../types'
-import { renderMarkdown } from '../utils/markdown'
 import { formatDateCN } from '../utils/format'
 import PhotoViewer from '../components/PhotoViewer.vue'
 import TripHero from '../components/TripHero.vue'
@@ -14,6 +13,8 @@ const token = route.params.token as string
 const trip = ref<ShareViewTrip | null>(null)
 const loading = ref(true)
 const error = ref('')
+// 网络错误/后端 5xx 可重试；链接失效不可重试（评审 M-23）
+const retryable = ref(false)
 const expandedLocations = ref<Set<number>>(new Set())
 const locationPhotos = ref<Record<number, Photo[]>>({})
 const photoLoading = ref<Record<number, boolean>>({})
@@ -22,7 +23,10 @@ const showPhotoViewer = ref(false)
 const viewerPhotos = ref<Photo[]>([])
 const viewerIndex = ref(0)
 
-onMounted(async () => {
+async function loadShare() {
+  loading.value = true
+  error.value = ''
+  retryable.value = false
   try {
     const { data } = await viewShare(token)
     trip.value = data
@@ -31,13 +35,19 @@ onMounted(async () => {
     const status = (err as { response?: { status?: number } })?.response?.status
     if (status === 410) {
       router.replace('/share/expired')
+    } else if (!status || status >= 500) {
+      // 访客网络抖动或后端重启中，不该说成「链接失效」误导分享者去轮换
+      error.value = '分享页加载失败，请检查网络后重试'
+      retryable.value = true
     } else {
       error.value = '分享链接不存在或已失效'
     }
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(loadShare)
 
 function toggleLocation(locId: number) {
   if (expandedLocations.value.has(locId)) {
@@ -69,10 +79,6 @@ function openViewer(photos: Photo[], index: number) {
   showPhotoViewer.value = true
 }
 
-function renderNote(note: string | null) {
-  return note ? renderMarkdown(note) : ''
-}
-
 const totalPhotos = computed(() =>
   trip.value?.locations.reduce((sum, loc) => sum + (loc.photo_count || 0), 0) ?? 0,
 )
@@ -97,7 +103,8 @@ const stopCount = computed(() => trip.value?.locations.length ?? 0)
 
     <div v-else-if="error" class="error-state" role="alert">
       <p>{{ error }}</p>
-      <p class="error-hint">请向分享者确认链接是否完整、是否已过期，或获取新的分享链接。</p>
+      <p v-if="!retryable" class="error-hint">请向分享者确认链接是否完整、是否已过期，或获取新的分享链接。</p>
+      <button v-if="retryable" type="button" class="error-action" @click="loadShare">重新加载</button>
       <button type="button" class="error-action" @click="router.push('/')">返回首页</button>
     </div>
 
@@ -175,7 +182,9 @@ const stopCount = computed(() => trip.value?.locations.length ?? 0)
               这个地点暂未分享照片
             </div>
 
-            <div v-if="loc.note" class="note-section markdown-body" v-html="renderNote(loc.note)"></div>
+            <div v-if="loc.note" class="note-section">
+              <NoteMarkdown :note="loc.note" :share-token="token" />
+            </div>
           </div>
         </div>
       </div>
