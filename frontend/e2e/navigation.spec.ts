@@ -33,14 +33,16 @@ test.describe('导航和路由守卫', () => {
   })
 
   test('退出登录', async ({ page }) => {
+    // 回归（评审 I-20）：旧定位器匹配不到任何元素，整条用例空转恒通过。
+    // 桌面顶栏与移动端顶栏都在 DOM 里渲染（CSS 按视口显隐），共 2 个按钮
     await registerAndLogin(page)
 
-    // 找到退出按钮
-    const logoutBtn = page.locator('button:has-text("退出"), .logout-btn, [title="退出"]')
-    if (await logoutBtn.count() > 0) {
-      await logoutBtn.first().click()
-      await expect(page).toHaveURL(/\/login/)
-    }
+    const logoutBtn = page.locator('[aria-label="退出登录"]')
+    await expect(logoutBtn).toHaveCount(2)
+    await logoutBtn.first().click()
+    await expect(page).toHaveURL(/\/login/)
+    // 回到登录页后退出按钮不再可见
+    await expect(logoutBtn).toHaveCount(0)
   })
 
   test('从地图页导航到旅行列表', async ({ page }) => {

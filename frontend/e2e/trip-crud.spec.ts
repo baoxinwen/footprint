@@ -74,8 +74,10 @@ test.describe('旅行 CRUD 流程', () => {
     // 确认删除对话框
     await page.locator('.el-message-box__btns button:has-text("删除旅行")').click()
 
-    // 应跳转回旅行列表
-    await expect(page).toHaveURL(/\/trips/)
+    // 应跳转回旅行列表；且该旅行不再出现（评审 I-20：
+    // 详情页 URL /trips/<id> 本身就满足 /\/trips/，旧断言恒通过）
+    await expect(page).toHaveURL(/\/trips$/)
+    await expect(page.getByRole('button', { name: '查看旅行：待删除旅行' })).toHaveCount(0)
   })
 
   test('导出 JSON', async ({ page }) => {

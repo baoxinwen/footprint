@@ -1,7 +1,8 @@
 import { expect, Page } from '@playwright/test'
 
 // 运行时生成的注册口令：仓库不留字面量口令（安全扫描按硬编码凭据拦截）
-const TEST_PASSWORD = crypto.randomUUID().replaceAll('-', '')
+// 导出给设置页等用例复用：改密成功用例必须填注册时的真实口令（评审 I-20）
+export const TEST_PASSWORD = crypto.randomUUID().replaceAll('-', '')
 
 export async function registerAndLogin(page: Page): Promise<string> {
   const username = `e2e_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
