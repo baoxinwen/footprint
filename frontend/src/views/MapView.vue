@@ -128,6 +128,12 @@ async function loadMapPage() {
 
     await initMap()
     renderCityMarkers()
+    // SDK 就绪前选的路线 / 开的照片模式，在这里恢复（评审 M-19）
+    if (photoMode.value) {
+      await togglePhotoMode()
+    } else if (selectedTripId.value) {
+      await selectTrip(selectedTripId.value)
+    }
   } catch (error) {
     handleLoadFailure(error)
   }
@@ -145,17 +151,30 @@ onMounted(() => {
   void loadMapPage()
 })
 
+let amapLoadFailed = false
+
 async function initMap() {
   const config = await getConfig()
   if (!config.amap_key) {
     throw new Error('请填写 AMAP_KEY')
   }
   ;(window as any)._AMapSecurityConfig = { securityJsCode: config.amap_security_code }
-  AMapRef = await AMapLoader.load({
-    key: config.amap_key,
-    version: '2.0',
-    plugins: ['AMap.Scale', 'AMap.ToolBar', 'AMap.TileLayer.Satellite', 'AMap.TileLayer.RoadNet', 'AMap.TileLayer.Traffic'],
-  })
+  // 真实加载器会缓存首次失败，之后 load() 不再插入脚本、直接拒绝：
+  // 重试前必须 reset（评审 I-16，恢复联网自动加载依赖这条路径）
+  if (amapLoadFailed) {
+    AMapLoader.reset()
+    amapLoadFailed = false
+  }
+  try {
+    AMapRef = await AMapLoader.load({
+      key: config.amap_key,
+      version: '2.0',
+      plugins: ['AMap.Scale', 'AMap.ToolBar', 'AMap.TileLayer.Satellite', 'AMap.TileLayer.RoadNet', 'AMap.TileLayer.Traffic'],
+    })
+  } catch (error) {
+    amapLoadFailed = true
+    throw error
+  }
 
   if (disposed) return
   createMap()

@@ -83,6 +83,12 @@ async function loadTrips() {
     if (seq !== loadSeq) return
     trips.value = data.items
     total.value = data.total
+    // 翻到已不存在的空页（另一会话删了数据）：回退最后一页重取，
+    // 否则空态与「共 N 次」同屏、分页器消失（评审 M-21）
+    if (!data.items.length && data.total > 0 && page.value > 1) {
+      page.value = Math.ceil(data.total / PAGE_SIZE)
+      return loadTrips()
+    }
   } catch {
     if (seq !== loadSeq) return
     loadError.value = true
@@ -94,7 +100,9 @@ async function loadTrips() {
 
 onMounted(() => {
   // 从 URL query 初始化筛选条件
-  if (route.query.city) search.value = route.query.city as string
+  // query.city 走城市筛选（只匹配地点城市），不是全文搜索——地图城市标记
+  // 与排行榜的跳转语义是「看这个城市的旅行」（评审 I-17）
+  if (route.query.city) filterCity.value = route.query.city as string
   const queryYear = Number(route.query.year)
   if (Number.isFinite(queryYear) && queryYear > 0) filterYear.value = queryYear
 

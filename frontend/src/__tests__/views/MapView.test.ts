@@ -24,10 +24,20 @@ vi.mock('../../utils/authenticatedImage', () => ({
   acquireImageResource: imageMocks.acquire,
 }))
 
+// 复刻真实加载器的失败缓存语义（评审 I-16）：失败后 load() 持续拒绝，reset() 后恢复
+const amapLoaderState = vi.hoisted(() => ({ failed: false }))
+
 // Mock AMap
 vi.mock('@amap/amap-jsapi-loader', () => ({
   default: {
-    load: vi.fn().mockResolvedValue({
+    reset: vi.fn(() => {
+      amapLoaderState.failed = false
+    }),
+    load: vi.fn().mockImplementation(() => {
+      if (amapLoaderState.failed) {
+        return Promise.reject(new TypeError('loader cached failure'))
+      }
+      return Promise.resolve({
       Map: vi.fn().mockImplementation(function MockMap() {
         const map = {
           addControl: vi.fn(),
@@ -71,7 +81,8 @@ vi.mock('@amap/amap-jsapi-loader', () => ({
       Polyline: class MockPolyline {},
       LngLat: class MockLngLat {},
       Pixel: class MockPixel {},
-    }),
+      })
+    })
   },
 }))
 
@@ -135,6 +146,7 @@ describe('MapView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    amapLoaderState.failed = false
     amapMocks.maps.length = 0
     amapMocks.satelliteLayers.length = 0
     amapMocks.roadNetLayers.length = 0
@@ -376,7 +388,9 @@ describe('MapView', () => {
 
     it('恢复联网后自动把地图加载出来', async () => {
       await goOffline()
-      vi.mocked(AMapLoader.load).mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      // 复刻真实加载器语义（评审 I-16）：失败被缓存，旧替身「只拒绝一次」
+      // 掩盖了组件不 reset 就永远重试不了的问题
+      amapLoaderState.failed = true
       wrapper = mountView()
       await flushPromises()
       expect(wrapper.find('.map-offline-overlay').exists()).toBe(true)
@@ -386,6 +400,28 @@ describe('MapView', () => {
 
       expect(wrapper.find('.map-offline-overlay').exists()).toBe(false)
       expect(amapMocks.maps).toHaveLength(1)
+    })
+
+    it('SDK 就绪后恢复加载前选中的路线（M-19）', async () => {
+      // 回归（评审 M-19）：SDK 挂起期间选的路线，初始化完成后要画出来
+      const defaultImpl = vi.mocked(AMapLoader.load).getMockImplementation()
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => { release = resolve })
+      vi.mocked(AMapLoader.load).mockImplementationOnce((async (...args: any[]) => {
+        await gate
+        return (defaultImpl as any)(...args)
+      }) as any)
+
+      wrapper = mountView()
+      await flushPromises()
+
+      await (wrapper.vm as any).selectTrip(1)
+      // 地图未就绪：只记下选择，不拉路线
+      expect(getAllRoutes).not.toHaveBeenCalled()
+
+      release()
+      await flushPromises()
+      await vi.waitFor(() => expect(getAllRoutes).toHaveBeenCalled())
     })
 
     it('断网时连统计数据都没拿到：恢复联网后数据和地图一起补上', async () => {

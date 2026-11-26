@@ -5,11 +5,13 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 // 所以这条提示只负责解释「看到的是缓存内容」，不用来挡任何操作。
 // 默认排在顶栏下方的文档流里：不随内容滚动，安全区由顶栏负责。
 // fixed：悬浮在页面最上方，用于没有顶栏的页面（登录、分享）。
+// text：页面语义不同时由使用方覆盖文案——分享页不是缓存快照（评审 M-28）。
 withDefaults(
   defineProps<{
     fixed?: boolean
+    text?: string
   }>(),
-  { fixed: false },
+  { fixed: false, text: '' },
 )
 
 const offline = ref(!navigator.onLine)
@@ -30,7 +32,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-if="offline" class="offline-banner" :class="{ 'offline-banner-fixed': fixed }" role="status">
-    当前离线，显示的是已缓存的内容；保存和删除需要联网
+    {{ text || '当前离线，显示的是已缓存的内容；保存和删除需要联网' }}
   </div>
 </template>
 

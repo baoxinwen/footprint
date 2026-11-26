@@ -159,6 +159,22 @@ describe('App global search', () => {
     expect(searchAll).not.toHaveBeenCalled()
   })
 
+  it('shows a failure message in the dropdown when the search request fails (M-18)', async () => {
+    // 回归（评审 M-18）：搜索失败时下拉面板曾是空白，读屏也拿不到任何反馈
+    vi.mocked(searchAll).mockRejectedValueOnce(new TypeError('network down'))
+    const wrapper = mountApp()
+    await wrapper.get('.search-btn').trigger('click')
+    const input = wrapper.findAll<HTMLInputElement>('.search-input')[0]
+
+    await input.setValue('北京')
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+
+    const panel = wrapper.get('.search-dropdown')
+    expect(panel.text()).toContain('搜索失败')
+    expect(wrapper.text()).not.toContain('搜索中')
+  })
+
   it('restores focus to the desktop search button when search closes', async () => {
     const wrapper = mountApp(document.body)
 

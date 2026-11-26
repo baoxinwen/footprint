@@ -9,6 +9,8 @@ declare module 'element-plus/dist/locale/zh-cn.mjs' {
 declare module '@amap/amap-jsapi-loader' {
   const AMapLoader: {
     load: (options: { key: string; version: string; plugins?: string[] }) => Promise<any>
+    // 清除加载状态（含首次失败后的失败缓存），再次 load 会重新插入脚本
+    reset: () => void
   }
   export default AMapLoader
 }

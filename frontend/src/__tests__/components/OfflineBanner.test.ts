@@ -20,6 +20,14 @@ describe('OfflineBanner', () => {
     expect(wrapper.get('[role="status"]').text()).toBe('当前离线，显示的是已缓存的内容；保存和删除需要联网')
   })
 
+  it('uses the caller-provided text (M-28：分享页不是缓存快照)', () => {
+    setOnline(false)
+    const wrapper = mount(OfflineBanner, {
+      props: { fixed: true, text: '当前离线，照片等新内容需要联网才能加载' },
+    })
+    expect(wrapper.get('[role="status"]').text()).toBe('当前离线，照片等新内容需要联网才能加载')
+  })
+
   it('断网时出现，恢复联网后消失', async () => {
     const wrapper = mount(OfflineBanner)
 

@@ -65,10 +65,13 @@ const searchQuery = ref('')
 const searchResults = ref<SearchResult | null>(null)
 const showSearch = ref(false)
 const searchLoading = ref(false)
+// 搜索失败（非取消）：下拉面板给出失败态，而不是留一片空白（评审 M-18）
+const searchFailed = ref(false)
 // 读屏播报：搜索结果变化对视觉用户可见，读屏用户靠这条常驻 status 区感知
 const searchAnnouncement = computed(() => {
   if (!searchQuery.value.trim()) return ''
   if (searchLoading.value) return '搜索中'
+  if (searchFailed.value) return '搜索失败'
   if (!searchResults.value) return ''
   const trips = searchResults.value.trips.length
   const locations = searchResults.value.locations.length
@@ -107,6 +110,7 @@ function onSearchInput() {
     const controller = new AbortController()
     searchController = controller
     searchLoading.value = true
+    searchFailed.value = false
     try {
       const { data } = await searchAll(query, { signal: controller.signal })
       if (requestId === searchRequestId && !controller.signal.aborted) {
@@ -115,6 +119,8 @@ function onSearchInput() {
     } catch {
       if (requestId === searchRequestId && !controller.signal.aborted) {
         searchResults.value = null
+        // 面板给出失败态（评审 M-18）；主动取消（aborted）不算失败
+        searchFailed.value = true
       }
     } finally {
       if (requestId === searchRequestId) {
@@ -227,6 +233,7 @@ function cycleTheme() {
 
         <div v-if="searchQuery.trim()" class="search-dropdown">
           <div v-if="searchLoading" class="search-status">搜索中...</div>
+          <div v-else-if="searchFailed" class="search-status" role="alert">搜索失败，请检查网络后重新输入</div>
           <div v-else-if="searchResults">
             <div v-if="searchResults.trips.length === 0 && searchResults.locations.length === 0" class="search-status">
               没有找到匹配「{{ searchQuery.trim() }}」的结果
@@ -307,6 +314,7 @@ function cycleTheme() {
 
         <div v-if="searchQuery.trim()" class="search-dropdown">
           <div v-if="searchLoading" class="search-status">搜索中...</div>
+          <div v-else-if="searchFailed" class="search-status" role="alert">搜索失败，请检查网络后重新输入</div>
           <div v-else-if="searchResults">
             <div v-if="searchResults.trips.length === 0 && searchResults.locations.length === 0" class="search-status">
               没有找到匹配「{{ searchQuery.trim() }}」的结果
@@ -352,9 +360,9 @@ function cycleTheme() {
     </div>
 
     <!-- 离线提示：有导航时排在顶栏下方的文档流里，不随内容滚动，安全区由顶栏负责；
-         登录 / 分享页没有顶栏，悬浮在最上方 -->
+         登录 / 分享页没有顶栏，悬浮在最上方。分享页不是缓存快照，文案如实说明（评审 M-28） -->
     <OfflineBanner v-if="showNav" />
-    <OfflineBanner v-else fixed />
+    <OfflineBanner v-else fixed :text="isSharePage ? '当前离线，照片等新内容需要联网才能加载' : undefined" />
 
     <main :class="{ 'no-header': !showNav }">
       <router-view v-slot="{ Component }">

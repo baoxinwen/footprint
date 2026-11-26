@@ -1,12 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
 // Mock router
 const mockPush = vi.fn()
+const routeState = vi.hoisted(() => ({ query: {} as Record<string, unknown> }))
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: mockPush }),
-  useRoute: () => ({ query: {} }),
+  useRoute: () => ({ query: routeState.query }),
   createRouter: vi.fn(() => ({ beforeEach: vi.fn() })),
   createWebHistory: vi.fn(),
 }))
@@ -29,10 +30,68 @@ vi.mock('element-plus', async (importOriginal) => {
 import TripsView from '../../views/TripsView.vue'
 import { getTrips, getTripCities, getTripYears } from '../../api/trips'
 
+// 每个用例结束后卸载：残留的实例会跟着后续用例改动的共享状态一起反应
+enableAutoUnmount(afterEach)
+
 describe('TripsView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    routeState.query = {}
+  })
+
+  it('filters by city when arriving with ?city= from the map or rankings (I-17)', async () => {
+    // 回归（评审 I-17）：城市标记/排行榜跳转带的 query.city 应走 city 筛选，
+    // 而不是塞进全文搜索——否则标记写「3 次」列表却「找到 5 条」
+    routeState.query = { city: '北京' }
+    vi.mocked(getTrips).mockResolvedValue({
+      data: { items: [], total: 0, page: 1, page_size: 20 },
+    } as any)
+    vi.mocked(getTripCities).mockResolvedValue({ data: [] } as any)
+    vi.mocked(getTripYears).mockResolvedValue({ data: [] } as any)
+
+    mount(TripsView, {
+      global: { stubs: { ElMessage: true, ElButton: true, ElInput: true, ElSelect: true, ElOption: true, ElPagination: true } },
+    })
+    await flushPromises()
+
+    expect(getTrips).toHaveBeenCalledWith(expect.objectContaining({ city: '北京', search: '' }))
+  })
+
+  it('falls back to the last page when the current page becomes empty (M-21)', async () => {
+    // 回归（评审 M-21）：另一会话删数据后本页停在空页——
+    // 曾显示「还没有旅行记录」且分页器消失，无法返回
+    vi.mocked(getTrips).mockResolvedValue({
+      data: {
+        items: [{ id: 7, title: '剩余的旅行', cities: [], location_count: 0, start_date: '2026-01-01', end_date: '2026-01-02' }],
+        total: 20, page: 1, page_size: 20,
+      },
+    } as any)
+    vi.mocked(getTripCities).mockResolvedValue({ data: [] } as any)
+    vi.mocked(getTripYears).mockResolvedValue({ data: [] } as any)
+
+    const wrapper = mount(TripsView, {
+      global: { stubs: { ElMessage: true, ElButton: true, ElInput: true, ElSelect: true, ElOption: true, ElPagination: true } },
+    })
+    await flushPromises()
+    vi.mocked(getTrips).mockClear()
+
+    // 翻到第 2 页时数据被删空：返回空页后应回退最后一页重取
+    vi.mocked(getTrips)
+      .mockResolvedValueOnce({ data: { items: [], total: 20, page: 2, page_size: 20 } } as any)
+      .mockResolvedValueOnce({
+        data: {
+          items: [{ id: 7, title: '剩余的旅行', cities: [], location_count: 0, start_date: '2026-01-01', end_date: '2026-01-02' }],
+          total: 20, page: 1, page_size: 20,
+        },
+      } as any)
+
+    const vm: any = wrapper.vm
+    vm.page = 2
+    await vm.loadTrips()
+
+    expect(getTrips).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }))
+    expect(vm.trips).toHaveLength(1)
   })
 
   it('renders trip list page', async () => {
