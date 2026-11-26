@@ -96,12 +96,12 @@ docker compose up -d
 ### 后端
 
 ```bash
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+# 在仓库根目录运行：.env 与 data/ 都按仓库根解析
+pip install -r backend/requirements.txt
+python -m uvicorn --app-dir backend app.main:app --reload --port 8000
 ```
 
-本地运行的数据默认写在 `backend/data/`（数据库 `data/db/footprint.db`、上传 `data/uploads/`），与 Docker 数据根的目录布局一致——不要把其他文件放进这个目录：Docker 入口会以「单一数据根」白名单校验，多余条目会拒绝启动。
+数据写在仓库根的 `data/`（数据库 `data/db/footprint.db`、上传 `data/uploads/`、导出临时 `data/tmp/`），与 Docker 数据根的目录布局一致——不要把其他文件放进这个目录：Docker 入口会以「单一数据根」白名单校验，多余条目会拒绝启动。不要 `cd backend` 后再启动：那样 `.env` 与 `data/` 都会按 `backend/` 解析，读不到配置、也看不到已有数据。
 
 ### 前端
 
