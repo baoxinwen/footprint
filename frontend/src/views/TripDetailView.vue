@@ -19,12 +19,12 @@ import {
   Rank,
   Share,
 } from '@element-plus/icons-vue'
-import { renderMarkdown } from '../utils/markdown'
-import { absoluteUrl, downloadBlob } from '../utils/dom'
+import { absoluteUrl, attachmentFilename, downloadBlob } from '../utils/dom'
 import { durationDays as durationDaysBetween } from '../utils/format'
 import { clearPrivateCaches, forgetCachedThumbnail } from '../utils/pwa'
 import request from '../api/request'
 import PhotoViewer from '../components/PhotoViewer.vue'
+import NoteMarkdown from '../components/NoteMarkdown.vue'
 import AuthenticatedImage from '../components/AuthenticatedImage.vue'
 import SkeletonList from '../components/SkeletonList.vue'
 import TripHero from '../components/TripHero.vue'
@@ -190,7 +190,9 @@ async function loadPhotos(locationId: number) {
   }
 }
 
-const uploadingLocations = ref<Set<number>>(new Set())
+// 每个地点的在传数量与进度（评审 I-18/PRD 6.1）：同地点多张并发排队而不是拒绝
+const uploadingCount = ref<Record<number, number>>({})
+const uploadProgress = ref<Record<number, number>>({})
 
 // 上传/删除成功后同步地点行的照片计数，否则摘要栏会一直显示旧值
 function bumpPhotoCount(locationId: number, delta: number) {
@@ -198,28 +200,43 @@ function bumpPhotoCount(locationId: number, delta: number) {
   if (loc) loc.photo_count = Math.max(0, (loc.photo_count || 0) + delta)
 }
 
+const MAX_UPLOAD_MB = 10
+
 async function handleUpload(locationId: number, file: File) {
-  if (uploadingLocations.value.has(locationId)) {
-    ElMessage.warning('当前地点正在上传中，请稍候')
-    return
-  }
-  uploadingLocations.value.add(locationId)
+  uploadingCount.value = { ...uploadingCount.value, [locationId]: (uploadingCount.value[locationId] ?? 0) + 1 }
   try {
-    await uploadPhoto(locationId, file)
+    await uploadPhoto(locationId, file, (percent) => {
+      uploadProgress.value = { ...uploadProgress.value, [locationId]: percent }
+    })
     ElMessage.success('已上传')
     bumpPhotoCount(locationId, 1)
     loadPhotos(locationId)
+    // 刷新接口快照：离线缓存里的旅行数据（photo_count/封面）跟着更新（评审 M-24）
+    void getTrip(tripId.value)
   } catch {
     ElMessage.error('上传照片失败，请稍后重试')
   } finally {
-    const next = new Set(uploadingLocations.value)
-    next.delete(locationId)
-    uploadingLocations.value = next
+    const counts = { ...uploadingCount.value, [locationId]: Math.max(0, (uploadingCount.value[locationId] ?? 1) - 1) }
+    uploadingCount.value = counts
+    if ((counts[locationId] ?? 0) === 0) {
+      const percents = { ...uploadProgress.value }
+      delete percents[locationId]
+      uploadProgress.value = percents
+    }
   }
 }
 
 function beforeUpload(locationId: number) {
   return (file: File) => {
+    // 前端预检（评审 I-18）：类型与大小不等后端或 nginx 拒绝后给泛化提示
+    if (!/^image\/(jpeg|png|gif|webp)$/.test(file.type)) {
+      ElMessage.warning('仅支持 JPG / PNG / GIF / WebP 格式的照片')
+      return false
+    }
+    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      ElMessage.warning(`照片不能超过 ${MAX_UPLOAD_MB}MB`)
+      return false
+    }
     handleUpload(locationId, file)
     return false
   }
@@ -242,6 +259,8 @@ async function handleDeletePhoto(photoId: number, locationId: number) {
     void forgetCachedThumbnail(photoId)
     bumpPhotoCount(locationId, -1)
     loadPhotos(locationId)
+    // 刷新接口快照：离线缓存里的旅行数据（photo_count/封面）跟着更新（评审 M-24）
+    void getTrip(tripId.value)
   } catch {
     ElMessage.error('删除照片失败，请稍后重试')
   }
@@ -257,10 +276,6 @@ function openStripViewer(index: number) {
   viewerPhotos.value = allPhotos.value.map((item) => item.photo)
   viewerIndex.value = index
   showPhotoViewer.value = true
-}
-
-function renderNote(note: string | null) {
-  return note ? renderMarkdown(note) : ''
 }
 
 function goToEdit() {
@@ -316,14 +331,30 @@ async function handleShare() {
   }
 }
 
+// 导出进行中：期间禁止重复触发，避免服务端重复建包（评审 I-9）
+const exporting = ref(false)
+
 async function handleExport(format: 'json' | 'markdown') {
+  if (exporting.value) return
+  exporting.value = true
   try {
-    const resp = await request.get(`/trips/${tripId.value}/export/${format}`, { responseType: 'blob' })
-    downloadBlob(resp.data, format === 'json' ? 'trip.json' : 'trip.zip')
+    // 大文件传输不受 30 秒全局超时约束（评审 I-9）；
+    // 文件名取服务端 Content-Disposition（评审 M-26）
+    const resp = await request.get(`/trips/${tripId.value}/export/${format}`, {
+      responseType: 'blob',
+      timeout: 0,
+    })
+    const headers = (resp.headers ?? {}) as Record<string, string>
+    const fallbackName = `${trip.value?.title ?? 'trip'}.${format === 'json' ? 'json' : 'zip'}`
+    downloadBlob(resp.data, attachmentFilename(headers['content-disposition']) ?? fallbackName)
+    const skipped = Number(headers['x-skipped-photos'] ?? 0)
+    if (skipped > 0) ElMessage.warning(`有 ${skipped} 张照片未包含在导出包中`)
   } catch {
     ElMessage.error('导出失败，请稍后重试')
+  } finally {
+    exporting.value = false
+    showExportDialog.value = false
   }
-  showExportDialog.value = false
 }
 
 /* ---------- 分享复制反馈（铁律 9/10：欠阻尼微弹入场，2.5s 自熄） ---------- */
@@ -354,8 +385,10 @@ function onDragEnd() {
 }
 
 async function moveLocation(from: number, to: number) {
-  if (from === to || !trip.value) return
-  const locs = [...trip.value.locations]
+  // 在途时忽略新的排序（评审 M-25）：两次排序交错会让「失败回滚」拿到旧服务端状态
+  if (from === to || !trip.value || sortSaving.value) return
+  const previous = trip.value.locations
+  const locs = [...previous]
   const [moved] = locs.splice(from, 1)
   locs.splice(to, 0, moved)
   trip.value.locations = locs
@@ -369,9 +402,11 @@ async function moveLocation(from: number, to: number) {
     sortAnnouncement.value = `已将「${moved.name}」移动到第 ${to + 1} 位`
     ElMessage.success('顺序已保存')
   } catch {
+    // 按本次排序前的顺序本地回滚，不做整页重载——
+    // 重载可能拿到另一次在途排序之前的服务端状态（评审 M-25）
+    trip.value.locations = previous
     sortAnnouncement.value = '顺序保存失败，已恢复原顺序'
     ElMessage.error('顺序保存失败，请稍后重试')
-    loadTrip()
   } finally {
     sortSaving.value = false
   }
@@ -619,12 +654,15 @@ defineExpose({ refreshPhotos: loadPhotos })
                     <el-upload
                       :show-file-list="false"
                       :before-upload="beforeUpload(loc.id)"
+                      :multiple="true"
                       accept="image/jpeg,image/png,image/gif,image/webp"
                       class="upload-card"
                     >
-                      <div class="upload-trigger">
-                        <el-icon aria-hidden="true"><Plus /></el-icon>
-                        <span>上传照片</span>
+                      <div class="upload-trigger" :class="{ uploading: (uploadingCount[loc.id] ?? 0) > 0 }">
+                        <el-icon v-if="(uploadingCount[loc.id] ?? 0) === 0" aria-hidden="true"><Plus /></el-icon>
+                        <span>{{ (uploadingCount[loc.id] ?? 0) > 0
+                          ? `上传中 ${uploadProgress[loc.id] ?? 0}%`
+                          : '上传照片' }}</span>
                       </div>
                     </el-upload>
                   </div>
@@ -632,7 +670,7 @@ defineExpose({ refreshPhotos: loadPhotos })
 
                 <section v-if="loc.note" class="note-section" aria-label="游记">
                   <h3 class="section-label">游记</h3>
-                  <div class="markdown-body" v-html="renderNote(loc.note)"></div>
+                  <NoteMarkdown :note="loc.note" />
                 </section>
                 </div>
               </div>
@@ -658,14 +696,14 @@ defineExpose({ refreshPhotos: loadPhotos })
     >
       <div class="export-dialog">
         <div class="export-options">
-          <button type="button" class="export-option" @click="handleExport('json')">
+          <button type="button" class="export-option" :disabled="exporting" @click="handleExport('json')">
             <span class="export-option-icon" aria-hidden="true"><el-icon><Document /></el-icon></span>
             <span class="export-option-info">
               <span class="export-option-name">导出为 JSON</span>
               <span class="export-option-desc">数据备份，可重新导入</span>
             </span>
           </button>
-          <button type="button" class="export-option" @click="handleExport('markdown')">
+          <button type="button" class="export-option" :disabled="exporting" @click="handleExport('markdown')">
             <span class="export-option-icon" aria-hidden="true"><el-icon><FolderOpened /></el-icon></span>
             <span class="export-option-info">
               <span class="export-option-name">导出为 Markdown</span>

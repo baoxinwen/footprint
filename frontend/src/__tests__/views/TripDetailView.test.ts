@@ -34,14 +34,16 @@ vi.mock('element-plus', async (importOriginal) => {
   const actual = await importOriginal<any>()
   return {
     ...actual,
-    ElMessage: { success: vi.fn(), error: vi.fn() },
+    ElMessage: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
     ElMessageBox: { confirm: vi.fn().mockResolvedValue('confirm') },
   }
 })
 
 import TripDetailView from '../../views/TripDetailView.vue'
+import request from '../../api/request'
+import { ElMessage } from 'element-plus'
 import { getTrip, updateSortOrder } from '../../api/trips'
-import { deletePhoto, getPhotos } from '../../api/photos'
+import { deletePhoto, getPhotos, uploadPhoto } from '../../api/photos'
 
 import { FakeCacheStorage } from '../pwa/fakeCacheStorage'
 
@@ -51,6 +53,12 @@ const AuthenticatedImageStub = defineComponent({
   name: 'AuthenticatedImage',
   props: { src: String, alt: String },
   template: '<img class="authenticated-image-stub" :data-src="src" :alt="alt" />',
+})
+
+const ElUploadStub = defineComponent({
+  name: 'ElUpload',
+  props: { beforeUpload: Function, multiple: { type: Boolean, default: false } },
+  template: '<div class="el-upload-stub"><slot /></div>',
 })
 
 const href = (path: string) => new URL(path, location.origin).href
@@ -129,6 +137,174 @@ describe('TripDetailView', () => {
     await vi.waitFor(() => {
       expect(getTrip).toHaveBeenCalledWith(1)
     })
+  })
+
+  it('exports without the global timeout, using the server filename (I-9/M-26)', async () => {
+    // 回归（评审 I-9/M-26）：大导出不再被 30 秒全局超时掐断；
+    // 文件名取服务端 Content-Disposition 而不是写死 trip.zip
+    vi.mocked(getTrip).mockResolvedValue({ data: mockTripData } as any)
+    const getSpy = vi.spyOn(request, 'get').mockResolvedValue({
+      data: new Blob(['zip'], { type: 'application/zip' }),
+      headers: {
+        'content-disposition': "attachment; filename*=UTF-8''%E5%8C%97%E4%BA%AC%E4%B8%89%E6%97%A5%E6%B8%B8.zip",
+      },
+    } as any)
+    const anchors: HTMLAnchorElement[] = []
+    const originalCreate = document.createElement.bind(document)
+    vi.spyOn(document, 'createElement').mockImplementation(((tag: string) => {
+      const el = originalCreate(tag)
+      if (tag === 'a') anchors.push(el as HTMLAnchorElement)
+      return el
+    }) as typeof document.createElement)
+
+    const wrapper = mount(TripDetailView, {
+      global: { stubs: { ElMessage: true, ElButton: true, ElIcon: true, ElUpload: true, ElDialog: true } },
+    })
+    await flushPromises()
+
+    await (wrapper.vm as any).handleExport('markdown')
+
+    expect(getSpy).toHaveBeenCalledWith(
+      '/trips/1/export/markdown',
+      expect.objectContaining({ responseType: 'blob', timeout: 0 }),
+    )
+    expect(anchors.at(-1)?.download).toBe('北京三日游.zip')
+    getSpy.mockRestore()
+    vi.restoreAllMocks()
+  })
+
+  it('warns when the export archive is missing photos (I-10)', async () => {
+    // 回归（评审 I-10）：后端用 X-Skipped-Photos 标明跳过的照片数，前端从不读取，
+    // 用户拿着缺照片的包却以为备份完整
+    vi.mocked(getTrip).mockResolvedValue({ data: mockTripData } as any)
+    const getSpy = vi.spyOn(request, 'get').mockResolvedValue({
+      data: new Blob(['zip'], { type: 'application/zip' }),
+      headers: { 'x-skipped-photos': '2' },
+    } as any)
+
+    const wrapper = mount(TripDetailView, {
+      global: { stubs: { ElMessage: true, ElButton: true, ElIcon: true, ElUpload: true, ElDialog: true } },
+    })
+    await flushPromises()
+
+    await (wrapper.vm as any).handleExport('markdown')
+
+    expect(ElMessage.warning).toHaveBeenCalledWith('有 2 张照片未包含在导出包中')
+    getSpy.mockRestore()
+    vi.restoreAllMocks()
+  })
+
+  it('ignores repeated export clicks while one export is in flight (I-9)', async () => {
+    // 回归（评审 I-9）：导出等待期间可重复触发，服务端会重复建包
+    vi.mocked(getTrip).mockResolvedValue({ data: mockTripData } as any)
+    const pending = deferred<{ data: Blob; headers: Record<string, string> }>()
+    const getSpy = vi.spyOn(request, 'get').mockReturnValueOnce(pending as any)
+
+    const wrapper = mount(TripDetailView, {
+      global: { stubs: { ElMessage: true, ElButton: true, ElIcon: true, ElUpload: true, ElDialog: true } },
+    })
+    await flushPromises()
+
+    const first = (wrapper.vm as any).handleExport('json')
+    await (wrapper.vm as any).handleExport('json')
+    expect(getSpy).toHaveBeenCalledTimes(1)
+
+    pending.resolve({ data: new Blob(['x']), headers: {} })
+    await first
+    getSpy.mockRestore()
+    vi.restoreAllMocks()
+  })
+
+  const uploadStubs = { ElMessage: true, ElButton: true, ElIcon: true, ElUpload: ElUploadStub, ElDialog: true }
+
+  it('queues multiple selected photos instead of rejecting the second (I-18)', async () => {
+    // 回归（评审 I-18/PRD 6.1）：一次可多选；此前同地点并发上传被直接拒绝
+    vi.mocked(getTrip).mockResolvedValue({ data: mockTripData } as any)
+    vi.mocked(uploadPhoto).mockResolvedValue({ data: { id: 10 } } as any)
+    const wrapper = mount(TripDetailView, { global: { stubs: uploadStubs } })
+    await flushPromises()
+    await wrapper.get('.location-toggle').trigger('click')
+    await flushPromises()
+
+    const upload = wrapper.getComponent(ElUploadStub)
+    expect(upload.props('multiple')).toBe(true)
+
+    const fileA = new File(['a'], 'a.jpg', { type: 'image/jpeg' })
+    const fileB = new File(['b'], 'b.jpg', { type: 'image/jpeg' })
+    await upload.props('beforeUpload')!(fileA)
+    await upload.props('beforeUpload')!(fileB)
+    await flushPromises()
+
+    expect(uploadPhoto).toHaveBeenCalledTimes(2)
+    expect(uploadPhoto).toHaveBeenNthCalledWith(1, 1, fileA, expect.any(Function))
+    expect(uploadPhoto).toHaveBeenNthCalledWith(2, 1, fileB, expect.any(Function))
+    expect(ElMessage.warning).not.toHaveBeenCalledWith('当前地点正在上传中，请稍候')
+  })
+
+  it('pre-checks photo size and type before hitting the server (I-18)', async () => {
+    vi.mocked(getTrip).mockResolvedValue({ data: mockTripData } as any)
+    const wrapper = mount(TripDetailView, { global: { stubs: uploadStubs } })
+    await flushPromises()
+    await wrapper.get('.location-toggle').trigger('click')
+    await flushPromises()
+
+    const beforeUpload = wrapper.getComponent(ElUploadStub).props('beforeUpload')!
+    const oversize = new File([new ArrayBuffer(10 * 1024 * 1024 + 1)], 'big.jpg', { type: 'image/jpeg' })
+    await beforeUpload(oversize)
+    const wrongType = new File(['x'], 'note.txt', { type: 'text/plain' })
+    await beforeUpload(wrongType)
+
+    expect(uploadPhoto).not.toHaveBeenCalled()
+    expect(ElMessage.warning).toHaveBeenCalledTimes(2)
+  })
+
+  it('serializes sort requests and rolls back locally on failure (M-25)', async () => {
+    // 回归（评审 M-25）：排序在途时忽略新的排序；失败按本次排序前的顺序本地回滚，
+    // 不做整页重载（重载可能拿到另一次在途排序之前的服务端状态）
+    vi.mocked(getTrip).mockResolvedValue({ data: structuredClone(mockTripData) } as any)
+    const pending = deferred<{ data: unknown }>()
+    vi.mocked(updateSortOrder).mockReturnValueOnce(pending.promise as any)
+
+    const wrapper = mount(TripDetailView, {
+      global: { stubs: { ElMessage: true, ElButton: true, ElIcon: true, ElUpload: true, ElDialog: true } },
+    })
+    await flushPromises()
+    const vm: any = wrapper.vm
+
+    const first = vm.moveLocation(0, 1)
+    await vm.moveLocation(1, 0)
+    expect(updateSortOrder).toHaveBeenCalledTimes(1)
+
+    pending.reject(new Error('fail'))
+    await first
+    await flushPromises()
+
+    expect(vm.trip.locations.map((l: { id: number }) => l.id)).toEqual([1, 2])
+    expect(getTrip).toHaveBeenCalledTimes(1)
+  })
+
+  it('refreshes the trip snapshot after deleting a photo (M-24)', async () => {
+    // 回归（评审 M-24）：离线快照里的 photo_count 与封面在删除照片后仍是旧值
+    vi.mocked(getTrip).mockResolvedValue({ data: structuredClone(mockTripData) } as any)
+    vi.mocked(getPhotos).mockResolvedValue({ data: [{
+      id: 9, location_id: 1, original_url: '/api/photos/9/original',
+      thumbnail_url: '/api/photos/9/thumbnail', file_name: 'p.jpg', file_size: 1, created_at: '2025-01-01T00:00:00',
+    }] } as any)
+    vi.mocked(deletePhoto).mockResolvedValue({ data: { message: 'ok' } } as any)
+
+    const wrapper = mount(TripDetailView, {
+      global: { stubs: { ElMessage: true, ElButton: true, ElIcon: true, ElUpload: true, ElDialog: true } },
+    })
+    await flushPromises()
+    expect(getTrip).toHaveBeenCalledTimes(1)
+
+    await wrapper.get('.location-toggle').trigger('click')
+    await flushPromises()
+    await wrapper.get('.photo-delete').trigger('click')
+    await flushPromises()
+
+    expect(deletePhoto).toHaveBeenCalledWith(9)
+    expect(getTrip).toHaveBeenCalledTimes(2)
   })
 
   it('does not refetch when navigating away clears route params (NaN guard)', async () => {

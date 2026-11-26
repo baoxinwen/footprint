@@ -191,7 +191,8 @@ async function exportAll(format: 'json' | 'zip') {
   const filename = format === 'json' ? '足迹数据备份.json' : '足迹数据备份.zip'
   exportingFormat.value = format
   try {
-    const response = await request.get(url, { responseType: 'blob' })
+    // 全量备份含全部照片，体积可能很大：不受 30 秒全局超时约束（评审 I-9）
+    const response = await request.get(url, { responseType: 'blob', timeout: 0 })
     downloadBlob(new Blob([response.data]), filename)
   } catch {
     ElMessage.error('导出失败，请稍后重试')

@@ -3,6 +3,21 @@ export function absoluteUrl(path: string): string {
   return new URL(path, window.location.origin).toString()
 }
 
+/** 从 Content-Disposition 解析下载文件名；解析不出返回 null（评审 M-26）。 */
+export function attachmentFilename(header: string | undefined | null): string | null {
+  if (!header) return null
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(header)
+  if (star) {
+    try {
+      return decodeURIComponent(star[1].trim())
+    } catch {
+      // 编码异常时落到下面的普通形式
+    }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(header)
+  return plain ? plain[1].trim() : null
+}
+
 /** 触发浏览器下载一个 Blob，自动释放 objectURL。 */
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
