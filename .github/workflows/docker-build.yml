@@ -7,6 +7,12 @@ on:
   pull_request:
     branches: [main]
 
+# 同一分支/tag 的构建串行化（评审 M-29）：连续 push 时后完成的总是较新的提交，
+# 避免「先触发的那次更晚完成」把旧提交覆盖到 :main 标签上
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}

@@ -1,7 +1,9 @@
-__pycache__
-*.pyc
-*.pyo
-*.egg-info
+# 递归匹配：无 ** 前缀的模式只排除构建上下文根这一层，
+# 嵌套的 __pycache__/*.pyc 曾随 COPY . . 进入镜像（评审 M-35）
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.egg-info
 .git
 .github
 .env
@@ -11,4 +13,6 @@ uploads
 test
 docs
 *.md
+.e2e-data
+.pytest_cache
 !requirements.txt

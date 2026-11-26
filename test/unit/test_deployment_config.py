@@ -323,6 +323,35 @@ def test_nginx_replaces_forwarded_for_and_hides_share_tokens_from_access_log():
     # 正则顺序：/share/ 必须出现在静态资源缓存块之前才能首配命中
     assert nginx.index("location ~ ^/share/") < nginx.index("location ~*")
     assert nginx.count("access_log off;") == 2
+    # 回归（评审 I-22）：落地页本身的 access_log off 挡不住 Referer——
+    # 浏览器随后请求 /assets/*、favicon 时会带着含 token 的 Referer 落进
+    # 默认日志。分享页文档必须声明 no-referrer；该块自带 add_header 后
+    # 不再继承 server 级安全头，必须补齐整套（nginx 继承规则）
+    assert "add_header Referrer-Policy no-referrer always;" in share_page_body
+    for header in (
+        "add_header X-Content-Type-Options nosniff always;",
+        "add_header X-Frame-Options SAMEORIGIN always;",
+        "add_header Content-Security-Policy",
+    ):
+        assert header in share_page_body, f"分享落地页缺少安全头: {header}"
+    # 回归（评审 M-36）：nginx 版本号不随响应头与默认错误页外露
+    assert "server_tokens off;" in nginx
+
+
+def test_nginx_gives_unhashed_icons_a_short_cache():
+    """回归（评审 M-31）：favicon 与 icons/*.png 文件名固定、无内容哈希，
+    不得落入一年期 immutable 缓存，否则换图标后老用户最长一年看不到。"""
+    nginx = (REPOSITORY_ROOT / "frontend" / "nginx.conf").read_text(
+        encoding="utf-8"
+    )
+
+    assert "location ~* ^/(favicon\\.svg|icons/)" in nginx
+    icons_body = nginx.split("location ~* ^/(favicon\\.svg|icons/)", 1)[1].split("\n    }", 1)[0]
+    assert "expires 1d" in icons_body
+    # 该块自带 add_header 后不继承 server 级安全头，必须补齐
+    assert "add_header Content-Security-Policy" in icons_body
+    # 图标块必须排在一年期 immutable 块之前（正则首配即停）
+    assert nginx.index("location ~* ^/(favicon\\.svg|icons/)") < nginx.index("location ~* ^(?!/api/)")
 
 
 @pytest.mark.unit
