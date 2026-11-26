@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { defineComponent, nextTick } from 'vue'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
 // Mock router
@@ -29,6 +29,7 @@ vi.mock('../../api/trips', () => ({
 
 vi.mock('../../api/photos', () => ({
   uploadPhoto: vi.fn(),
+  getPhotos: vi.fn(),
 }))
 
 vi.mock('../../api/config', () => ({
@@ -43,10 +44,25 @@ const amapSearchMocks = vi.hoisted(() => ({
   geocoder: { getAddress: vi.fn() },
 }))
 
+const amapFormMaps = vi.hoisted(() => ({
+  maps: [] as Array<{ destroy: ReturnType<typeof vi.fn>; add: ReturnType<typeof vi.fn>; center?: number[] }>,
+}))
+
 vi.mock('@amap/amap-jsapi-loader', () => ({
   default: {
     load: vi.fn().mockResolvedValue({
-      Map: vi.fn(),
+      Map: vi.fn().mockImplementation(function MockFormMap(_container: unknown, options: { center: number[] }) {
+        const map = {
+          destroy: vi.fn(),
+          add: vi.fn(),
+          center: options?.center,
+        }
+        amapFormMaps.maps.push(map)
+        return map
+      }),
+      Marker: vi.fn().mockImplementation(function MockFormMarker() {
+        return {}
+      }),
       PlaceSearch: vi.fn(function MockPlaceSearch() { return amapSearchMocks.placeSearch }),
       Geocoder: vi.fn(function MockGeocoder() { return amapSearchMocks.geocoder }),
     }),
@@ -73,7 +89,7 @@ vi.mock('element-plus', async (importOriginal) => {
 
 import TripFormView from '../../views/TripFormView.vue'
 import { addLocation, deleteLocation, getTrip, updateLocation, updateTrip } from '../../api/trips'
-import { uploadPhoto } from '../../api/photos'
+import { getPhotos, uploadPhoto } from '../../api/photos'
 import { getConfig } from '../../api/config'
 import { FakeCacheStorage } from '../pwa/fakeCacheStorage'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -175,10 +191,14 @@ function mountView() {
   return mount(TripFormView, { global: { stubs: globalStubs } })
 }
 
+// 每个用例结束后卸载：残留的实例会跟着后续用例改动的共享状态一起反应
+enableAutoUnmount(afterEach)
+
 describe('TripFormView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    amapFormMaps.maps.length = 0
     routerState.params.id = '1'
     routerState.leaveGuard = null
     localStorage.clear()
@@ -297,6 +317,107 @@ describe('TripFormView', () => {
     expect(amapSearchMocks.placeSearch.search).toHaveBeenCalledWith('故宫', expect.any(Function))
     expect((wrapper.vm as any).poiResults[0].name).toBe('天坛')
     expect(ElMessage.warning).not.toHaveBeenCalled()
+  })
+
+  async function searchOnePoi(wrapper: any) {
+    amapSearchMocks.placeSearch.search.mockImplementation((_keyword: string, callback: any) => {
+      callback('complete', { poiList: { pois: [mockPoi] } })
+    })
+    amapSearchMocks.geocoder.getAddress.mockImplementation((_location: any, callback: any) => {
+      callback('complete', {})
+    })
+    ;(wrapper.vm as any).poiSearch = '故宫'
+    ;(wrapper.vm as any).searchPoi()
+    await flushPromises()
+  }
+
+  it('shows a preview map when a POI is selected, adding only after confirmation (PRD 5.2)', async () => {
+    // PRD 5.2 对齐：点击 POI 先预览落点，确认后才添加——错误匹配的 POI 在
+    // 最便宜的时机被拦下，而不是落库后才在地图上发现
+    vi.mocked(getTrip).mockResolvedValue({ data: mockTripData } as any)
+    const wrapper = mountView()
+    await flushPromises()
+    await searchOnePoi(wrapper)
+
+    await wrapper.get('.poi-item').trigger('click')
+    await nextTick()
+
+    // 预览面板出现，地图以 POI 坐标为中心创建
+    const preview = wrapper.get('.poi-preview')
+    expect(preview.text()).toContain('天坛')
+    expect(amapFormMaps.maps).toHaveLength(1)
+    expect(amapFormMaps.maps[0].center).toEqual([116.4108, 39.8819])
+    // 尚未添加
+    expect((wrapper.vm as any).locations).toHaveLength(mockTripData.locations.length)
+
+    await preview.get('.poi-preview-actions button:last-child').trigger('click')
+    await flushPromises()
+
+    expect((wrapper.vm as any).locations).toHaveLength(mockTripData.locations.length + 1)
+    expect((wrapper.vm as any).locations.at(-1).name).toBe('天坛')
+    expect(wrapper.find('.poi-preview').exists()).toBe(false)
+    // 预览地图销毁，不再残留
+    expect(amapFormMaps.maps[0].destroy).toHaveBeenCalled()
+  })
+
+  it('cancelling the POI preview adds nothing and destroys the preview map (PRD 5.2)', async () => {
+    vi.mocked(getTrip).mockResolvedValue({ data: mockTripData } as any)
+    const wrapper = mountView()
+    await flushPromises()
+    await searchOnePoi(wrapper)
+
+    await wrapper.get('.poi-item').trigger('click')
+    await nextTick()
+    await wrapper.get('.poi-preview-actions button:first-child').trigger('click')
+    await flushPromises()
+
+    expect((wrapper.vm as any).locations).toHaveLength(mockTripData.locations.length)
+    expect(wrapper.find('.poi-preview').exists()).toBe(false)
+    expect(amapFormMaps.maps[0].destroy).toHaveBeenCalled()
+  })
+
+  it('lists uploaded photos in the note editor and inserts one on click (PRD 5.3/七)', async () => {
+    // 回归（PRD 5.3/七）：曾要求手写 /api/photos/{id}/… 的数字 id，实际不可用
+    vi.mocked(getTrip).mockResolvedValue({ data: mockTripData } as any)
+    vi.mocked(getPhotos).mockResolvedValue({ data: [{
+      id: 9,
+      location_id: 1,
+      original_url: '/api/photos/9/original',
+      thumbnail_url: '/api/photos/9/thumbnail',
+      file_name: '屏幕截图.jpg',
+      file_size: 1,
+      created_at: '2026-01-01T00:00:00',
+    }] } as any)
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.findAll('.location-item')[0].findAll('button')[0].trigger('click')
+    await flushPromises()
+
+    // 打开游记编辑器时拉取该地点已上传照片
+    expect(getPhotos).toHaveBeenCalledWith(1)
+    const strip = wrapper.get('.editor-photo-strip')
+    expect(strip.findAll('.editor-photo-chip')).toHaveLength(1)
+
+    await strip.get('.editor-photo-chip').trigger('click')
+
+    const editorValue = wrapper.get<HTMLTextAreaElement>('[data-testid="note-editor"]').element.value
+    expect(editorValue).toContain('![屏幕截图.jpg](/api/photos/9/original)')
+  })
+
+  it('does not offer photo insertion in create mode where no photos exist yet (PRD 5.3)', async () => {
+    routerState.params.id = undefined
+    vi.mocked(getTrip).mockClear()
+    const wrapper = mountView()
+    await flushPromises()
+
+    // 新建模式：手工造一个临时地点并打开游记编辑器
+    await (wrapper.vm as any).addPoi(mockPoi)
+    await wrapper.findAll('.location-item')[0].findAll('button')[0].trigger('click')
+    await flushPromises()
+
+    expect(getPhotos).not.toHaveBeenCalled()
+    expect(wrapper.find('.editor-photo-strip').exists()).toBe(false)
   })
 
   it('shows no-result for the no_data status', async () => {

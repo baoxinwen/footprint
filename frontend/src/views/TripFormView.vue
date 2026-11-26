@@ -2,7 +2,7 @@
 import { ref, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { createTrip, getTrip, updateTrip } from '../api/trips'
-import { uploadPhoto } from '../api/photos'
+import { uploadPhoto, getPhotos } from '../api/photos'
 import type { Location, Photo, AmapPoi } from '../types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AMapLoader from '@amap/amap-jsapi-loader'
@@ -147,6 +147,8 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
 
 window.addEventListener('beforeunload', handleBeforeUnload)
 onBeforeUnmount(() => window.removeEventListener('beforeunload', handleBeforeUnload))
+
+onBeforeUnmount(destroyPreviewMap)
 
 onBeforeRouteLeave(async (to) => {
   if (isLogoutNavigation()) return true
@@ -372,6 +374,45 @@ function addPoi(poi: AmapPoi) {
   }
 }
 
+// ---- POI 选中预览（PRD 5.2）：点击结果先看落点，确认再添加，拦截错误匹配 ----
+const pendingPoi = ref<AmapPoi | null>(null)
+const previewMapEl = ref<HTMLDivElement | null>(null)
+let previewMapInstance: { destroy: () => void; add: (overlay: unknown) => void } | null = null
+
+function destroyPreviewMap() {
+  previewMapInstance?.destroy()
+  previewMapInstance = null
+}
+
+async function selectPoi(poi: AmapPoi) {
+  // SDK 没就绪时画不了预览：退回旧行为直接添加，功能不因预览不可用
+  if (!AMapInstance) {
+    addPoi(poi)
+    return
+  }
+  pendingPoi.value = poi
+  await nextTick()
+  if (!previewMapEl.value) return
+  destroyPreviewMap()
+  const center: [number, number] = [poi.location.lng, poi.location.lat]
+  const map = new AMapInstance.Map(previewMapEl.value, { center, zoom: 15 })
+  map.add(new AMapInstance.Marker({ position: center }))
+  previewMapInstance = map
+}
+
+function confirmPendingPoi() {
+  const poi = pendingPoi.value
+  if (!poi) return
+  pendingPoi.value = null
+  destroyPreviewMap()
+  addPoi(poi)
+}
+
+function cancelPendingPoi() {
+  pendingPoi.value = null
+  destroyPreviewMap()
+}
+
 async function removeLocation(loc: EditableLocation) {
   // 破坏性操作需确认：删除地点会连带丢弃其游记（保存后不可恢复）。
   // 确认放在关闭编辑器之前——用户取消时编辑态原样保留（评审 I-13）
@@ -446,6 +487,30 @@ async function startEditNote(loc: EditableLocation) {
   noteContent.value = loc.note || ''
   // 移动端默认单栏编辑；桌面默认双栏编辑+预览
   notePreview.value = window.innerWidth >= 900
+  // 打开编辑器时拉取该地点已上传照片，供「点击插入游记」（PRD 5.3/七）
+  void loadEditorPhotos(loc)
+}
+
+// ---- 游记插入照片（PRD 5.3/七）：手写 /api/photos/{id}/… 的数字 id 不可用 ----
+const editorPhotos = ref<Photo[]>([])
+
+async function loadEditorPhotos(loc: EditableLocation) {
+  editorPhotos.value = []
+  // 新建模式的地点还没有 id，照片只能创建后在详情页上传
+  if (!isEdit.value || typeof loc.id !== 'number' || loc.id <= 0) return
+  try {
+    const { data } = await getPhotos(loc.id)
+    editorPhotos.value = data
+  } catch {
+    // 拉不到就不显示插入条，不影响游记编辑本身
+  }
+}
+
+function insertPhotoSnippet(photo: Photo) {
+  const snippet = `![${photo.file_name || '照片'}](${photo.original_url})`
+  noteContent.value = noteContent.value
+    ? `${noteContent.value.replace(/\s*$/, '')}\n\n${snippet}\n`
+    : `${snippet}\n`
 }
 
 function saveNote() {
@@ -459,6 +524,7 @@ function saveNote() {
 function closeNoteEditor() {
   editingNoteId.value = null
   noteContent.value = ''
+  editorPhotos.value = []
 }
 
 function formatLocationRegion(location: EditableLocation) {
@@ -623,17 +689,26 @@ async function handleSave() {
             </el-input>
 
             <div v-if="poiResults.length" class="poi-results">
-              <button v-for="poi in poiResults" :key="poi.name + '|' + poi.address + '|' + poi.location.lng + ',' + poi.location.lat" type="button" class="poi-item" @click="addPoi(poi)">
+              <button v-for="poi in poiResults" :key="poi.name + '|' + poi.address + '|' + poi.location.lng + ',' + poi.location.lat" type="button" class="poi-item" @click="selectPoi(poi)">
                 <div class="poi-name">{{ poi.name }}</div>
                 <div class="poi-address">{{ poi.address }}</div>
               </button>
+            </div>
+
+            <!-- POI 选中预览：确认落点再添加，拦截同名不同城的错误匹配（PRD 5.2） -->
+            <div v-if="pendingPoi" class="poi-preview" role="dialog" aria-label="确认添加地点">
+              <div ref="previewMapEl" class="poi-preview-map" aria-hidden="true"></div>
+              <p class="poi-preview-name">{{ pendingPoi.name }}</p>
+              <div class="poi-preview-actions">
+                <el-button size="small" @click="cancelPendingPoi">取消</el-button>
+                <el-button size="small" type="primary" @click="confirmPendingPoi">添加</el-button>
+              </div>
             </div>
           </div>
 
           <div class="locations-list">
             <div v-if="locations.filter(l => !l._deleted).length === 0" class="locations-empty">
               <p class="empty-title">尚未添加地点</p>
-              <p class="empty-hint">在上方搜索景点名称（如故宫、西湖），点击结果即可加入行程</p>
             </div>
             <div v-for="(loc, index) in locations.filter(l => !l._deleted)" :key="loc.id" class="location-item">
               <div class="location-main">
@@ -705,8 +780,22 @@ async function handleSave() {
                   :toolbars="['bold', 'italic', 'strikeThrough', '-', 'image', 'link', '-', 'preview']"
                   style="height: 360px"
                 />
+                <!-- 从已上传照片中选择插入（PRD 5.3/七）：替代手写数字 id 的不可用方式 -->
+                <div v-if="editorPhotos.length" class="editor-photo-strip" role="listbox" aria-label="从已上传照片中选择插入游记">
+                  <button
+                    v-for="photo in editorPhotos"
+                    :key="photo.id"
+                    type="button"
+                    role="option"
+                    class="editor-photo-chip"
+                    :title="`插入照片：${photo.file_name}`"
+                    :aria-label="`插入照片：${photo.file_name}`"
+                    @click="insertPhotoSnippet(photo)"
+                  >
+                    <AuthenticatedImage :src="photo.thumbnail_url" :alt="photo.file_name || '已上传照片'" />
+                  </button>
+                </div>
                 <div class="editor-foot">
-                  <span class="editor-hint">支持 Markdown 语法；图片可用「照片」按钮上传后，在游记中以链接引用</span>
                   <div class="editor-actions">
                     <el-button size="small" @click="closeNoteEditor">取消</el-button>
                     <el-button size="small" type="primary" @click="saveNote">保存游记</el-button>
@@ -915,12 +1004,6 @@ async function handleSave() {
   color: var(--color-ink);
 }
 
-.empty-hint {
-  margin-top: 6px;
-  font-size: var(--text-sm);
-  color: var(--color-ink-muted);
-}
-
 .location-item {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -1051,6 +1134,70 @@ async function handleSave() {
   gap: var(--space-md);
   margin-top: var(--space-sm);
   flex-wrap: wrap;
+}
+
+/* 从已上传照片选择插入（PRD 5.3/七） */
+.editor-photo-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+  padding: var(--space-sm);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  overflow-x: auto;
+}
+
+.editor-photo-chip {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--color-field);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.editor-photo-chip:hover {
+  transform: translateY(-1px);
+}
+
+.editor-photo-chip :deep(img) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* POI 选中预览（PRD 5.2）：地图即说明，名称叠在地图上 */
+.poi-preview {
+  margin-top: var(--space-sm);
+  padding: var(--space-sm);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.poi-preview-map {
+  position: relative;
+  height: 200px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.poi-preview-name {
+  margin-top: var(--space-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--color-ink);
+}
+
+.poi-preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
 }
 
 .editor-hint {
