@@ -2,7 +2,6 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
 from app.core.database import get_db
 from app.core.security import get_current_user_id
@@ -12,7 +11,7 @@ from app.models.trip import Trip
 from app.models.photo import Photo
 from app.schemas.photo import PhotoResponse
 from app.utils.image import validate_image, save_image, delete_image_files
-from app.utils.upload import UploadSizeExceeded, read_upload_limited
+from app.utils.upload import UploadSizeExceeded, read_upload_limited_sync
 from app.utils.storage import StoredFileUnavailable, UnsafeStoredPath, stored_file_response
 
 logger = logging.getLogger(__name__)
@@ -33,7 +32,7 @@ def _photo_response(photo: Photo) -> PhotoResponse:
 
 
 @router.post("/upload/{location_id}", status_code=201)
-async def upload_photo(
+def upload_photo(
     location_id: int,
     file: UploadFile = File(...),
     user_id: int = Depends(get_current_user_id),
@@ -50,22 +49,20 @@ async def upload_photo(
 
     # Validate file size
     try:
-        file_bytes = await read_upload_limited(file, settings.MAX_FILE_SIZE)
+        file_bytes = read_upload_limited_sync(file, settings.MAX_FILE_SIZE)
     except UploadSizeExceeded:
         logger.warning(f"照片上传失败: 文件超过限制 ({settings.MAX_FILE_SIZE} bytes)")
         raise HTTPException(status_code=400, detail="文件大小超过 10MB 限制")
 
     # Validate file type
-    if not await run_in_threadpool(validate_image, file_bytes):
+    if not validate_image(file_bytes):
         logger.warning(f"照片上传失败: 非法图片格式 (filename: {file.filename})")
         raise HTTPException(status_code=400, detail="不是合法的图片文件")
 
-    # Save。save_image 会做扩展名白名单等输入校验（ValueError）与 PIL 重活：
-    # 前者映射为 400，后者必须卸载到线程池，避免阻塞事件循环上的全部并发请求
+    # 端点是普通 def（自动进线程池，评审 M-7）：PIL 重活与同步 DB 都不占事件循环；
+    # save_image 会做扩展名/格式一致性校验（ValueError → 400）
     try:
-        paths = await run_in_threadpool(
-            save_image, file_bytes, file.filename or "photo.jpg"
-        )
+        paths = save_image(file_bytes, file.filename or "photo.jpg")
     except ValueError as exc:
         logger.warning(f"照片上传失败: {exc} (filename: {file.filename})")
         raise HTTPException(status_code=400, detail=str(exc))
@@ -74,7 +71,8 @@ async def upload_photo(
         location_id=location_id,
         original_path=paths["original_path"],
         thumbnail_path=paths["thumbnail_path"],
-        file_name=file.filename or "photo.jpg",
+        # PRD 12.4 的 VARCHAR(255)：入库前截断，SQLite 不强制 VARCHAR 长度（评审 M-13）
+        file_name=(file.filename or "photo.jpg")[:255],
         file_size=len(file_bytes),
     )
     db.add(photo)

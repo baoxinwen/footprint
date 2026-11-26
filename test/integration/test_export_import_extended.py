@@ -228,17 +228,38 @@ class TestImportValidation:
         )
         assert resp.status_code == 422
 
+    def test_request_body_over_limit_rejected_413(self, client, auth_headers):
+        """回归（评审 I-23）：直连后端（无 nginx 的 12M 上限）时按 Content-Length 提前拒绝。
+
+        multipart 解析阶段超限分片会整体落进容器 64MB 的 tmpfs /tmp，
+        必须在解析前拦下，而不是等端点的体积检查。
+        """
+        from app.core.config import settings
+        from fastapi.testclient import TestClient
+
+        quiet = TestClient(client.app, raise_server_exceptions=False)
+        big = b"x" * (settings.MAX_REQUEST_BODY_SIZE + 1)
+        resp = quiet.post(
+            "/api/trips/import",
+            files={"file": ("big.json", big, "application/json")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 413, resp.status_code
+
     def test_import_reads_with_a_bounded_size(self, client, auth_headers, monkeypatch):
         from app.core.config import settings
 
-        original_read = UploadFile.read
+        # 端点为同步 def（评审 M-7）后走底层文件对象读取，跟踪 SpooledTemporaryFile.read
+        import tempfile
+
+        original_read = tempfile.SpooledTemporaryFile.read
         requested_sizes = []
 
-        async def tracking_read(upload, size=-1):
+        def tracking_read(spooled, size=-1):
             requested_sizes.append(size)
-            return await original_read(upload, size)
+            return original_read(spooled, size)
 
-        monkeypatch.setattr(UploadFile, "read", tracking_read)
+        monkeypatch.setattr(tempfile.SpooledTemporaryFile, "read", tracking_read)
         monkeypatch.setattr(settings, "MAX_IMPORT_SIZE", 32)
         resp = client.post(
             "/api/trips/import",

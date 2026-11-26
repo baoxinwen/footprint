@@ -12,6 +12,16 @@ from starlette.datastructures import UploadFile
 class TestUploadPhoto:
     """照片上传。"""
 
+    def test_upload_and_import_endpoints_run_in_threadpool(self):
+        """回归（评审 M-7）：上传与导入端点是普通 def，同步 DB/PIL 活不占事件循环。"""
+        import inspect
+
+        from app.api.export_import import import_trips
+        from app.api.photos import upload_photo
+
+        assert not inspect.iscoroutinefunction(upload_photo)
+        assert not inspect.iscoroutinefunction(import_trips)
+
     def _create_trip_with_location(self, client, auth_headers, sample_trip_data):
         resp = client.post("/api/trips", json=sample_trip_data, headers=auth_headers)
         detail = client.get(f"/api/trips/{resp.json()['id']}", headers=auth_headers).json()
@@ -32,8 +42,13 @@ class TestUploadPhoto:
         assert "original_url" in data
         assert "thumbnail_url" in data
 
-    def test_upload_file_too_large(self, client, auth_headers, sample_trip_data, large_image_bytes, upload_dir):
+    def test_upload_file_too_large(self, client, auth_headers, sample_trip_data, large_image_bytes, upload_dir, monkeypatch):
         """TC-PHOTO-002: 文件过大。"""
+        from app.core.config import settings
+
+        # I-23 起整个请求体有 12MB 硬上限（对齐 nginx），这里抬高中间件上限，
+        # 让 48MB 的 BMP 走端点的 10MB 友好文案路径
+        monkeypatch.setattr(settings, "MAX_REQUEST_BODY_SIZE", 64 * 1024 * 1024)
         _, loc_id = self._create_trip_with_location(client, auth_headers, sample_trip_data)
 
         resp = client.post(
@@ -68,20 +83,85 @@ class TestUploadPhoto:
         assert resp.status_code == 201
         assert resp.json()["thumbnail_url"] is not None
 
+    def test_thumbnail_applies_exif_orientation(self, client, auth_headers, sample_trip_data, upload_dir):
+        """回归（评审 I-5）：带 EXIF 方向标签的照片，缩略图按摆正后的方向生成。"""
+        _, loc_id = self._create_trip_with_location(client, auth_headers, sample_trip_data)
+
+        # 800x400 + 方向标签 6（应顺时针转 90° 显示，即 400x800）→ 缩略图应为 300x600
+        buf = BytesIO()
+        img = Image.new("RGB", (800, 400), color="red")
+        exif = Image.Exif()
+        exif[0x0112] = 6
+        img.save(buf, format="JPEG", exif=exif)
+
+        upload = client.post(
+            f"/api/photos/upload/{loc_id}",
+            files={"file": ("rotated.jpg", buf.getvalue(), "image/jpeg")},
+            headers=auth_headers,
+        )
+        assert upload.status_code == 201
+
+        thumb = client.get(f"/api/photos/{upload.json()['id']}/thumbnail", headers=auth_headers)
+        assert thumb.status_code == 200
+        assert Image.open(BytesIO(thumb.content)).size == (300, 600)
+
+    def test_upload_rejects_content_extension_mismatch(self, client, auth_headers, sample_trip_data, test_webp_bytes, upload_dir):
+        """回归（评审 M-11）：文件内容与扩展名不符（WebP 改名 .jpg）应 400。"""
+        _, loc_id = self._create_trip_with_location(client, auth_headers, sample_trip_data)
+        resp = client.post(
+            f"/api/photos/upload/{loc_id}",
+            files={"file": ("renamed.jpg", test_webp_bytes, "image/jpeg")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "扩展名" in resp.json()["detail"]
+
+    def test_upload_truncated_jpeg_returns_400(self, client, auth_headers, sample_trip_data, upload_dir):
+        """回归（评审 M-9）：能通过文件头校验但无法解码的截断图应 400 而非 500。
+
+        90% 截断时 Image.open/verify 仍通过，缩略图解码抛 OSError——
+        该路径曾以未捕获异常变成 500。
+        """
+        _, loc_id = self._create_trip_with_location(client, auth_headers, sample_trip_data)
+        buf = BytesIO()
+        Image.new("RGB", (400, 400), color="red").save(buf, format="JPEG", quality=92)
+        truncated = buf.getvalue()[: int(len(buf.getvalue()) * 0.9)]
+        resp = client.post(
+            f"/api/photos/upload/{loc_id}",
+            files={"file": ("truncated.jpg", truncated, "image/jpeg")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400, resp.text
+
+    def test_upload_long_filename_truncated(self, client, auth_headers, sample_trip_data, test_image_bytes, upload_dir):
+        """回归（评审 M-13）：超长文件名入库前截断到 255 字符（PRD 12.4）。"""
+        _, loc_id = self._create_trip_with_location(client, auth_headers, sample_trip_data)
+        resp = client.post(
+            f"/api/photos/upload/{loc_id}",
+            files={"file": ("长" * 300 + ".jpg", test_image_bytes, "image/jpeg")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        photos = client.get(f"/api/photos/location/{loc_id}", headers=auth_headers).json()
+        assert len(photos[0]["file_name"]) <= 255
+
     def test_oversized_upload_reads_only_up_to_limit_plus_one(
         self, client, auth_headers, sample_trip_data, upload_dir, monkeypatch
     ):
         from app.core.config import settings
 
         _, loc_id = self._create_trip_with_location(client, auth_headers, sample_trip_data)
-        original_read = UploadFile.read
+        # 端点为同步 def（评审 M-7）后走底层文件对象读取，跟踪 SpooledTemporaryFile.read
+        import tempfile
+
+        original_read = tempfile.SpooledTemporaryFile.read
         requested_sizes = []
 
-        async def tracking_read(upload, size=-1):
+        def tracking_read(spooled, size=-1):
             requested_sizes.append(size)
-            return await original_read(upload, size)
+            return original_read(spooled, size)
 
-        monkeypatch.setattr(UploadFile, "read", tracking_read)
+        monkeypatch.setattr(tempfile.SpooledTemporaryFile, "read", tracking_read)
         monkeypatch.setattr(settings, "MAX_FILE_SIZE", 32)
         resp = client.post(
             f"/api/photos/upload/{loc_id}",
