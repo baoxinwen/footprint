@@ -4,6 +4,7 @@
 """
 import pytest
 from sqlalchemy import text
+from sqlalchemy.orm import sessionmaker
 
 
 @pytest.mark.integration
@@ -77,6 +78,24 @@ class TestListTrips:
         assert resp.status_code == 200
         items = resp.json()["items"]
         assert items[0]["location_count"] >= items[-1]["location_count"]
+
+    def test_list_trips_search_combined_with_city(self, client, auth_headers, sample_trip_data):
+        """回归（评审 I-1）：search 与 city 筛选叠加不得因 Location 双 JOIN 报 500。"""
+        client.post("/api/trips", json=sample_trip_data, headers=auth_headers)
+        client.post("/api/trips", json={**sample_trip_data, "title": "上海之旅", "locations": [
+            {**sample_trip_data["locations"][0], "city": "上海", "province": "上海"},
+            sample_trip_data["locations"][1],
+        ]}, headers=auth_headers)
+
+        resp = client.get("/api/trips?search=北京&city=北京", headers=auth_headers)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["total"] >= 1
+        assert all("北京" in item["cities"] for item in body["items"])
+
+        # 与排序叠加的组合同样可用（沿用 2026-09-04 C2 的既有回归路径）
+        resp = client.get("/api/trips?search=北京&city=北京&sort_by=location_count", headers=auth_headers)
+        assert resp.status_code == 200, resp.text
 
     def test_list_trips_sort_by_name(self, client, auth_headers, sample_trip_data):
         """TC-TRIP-006: 按名称排序。"""
@@ -295,6 +314,16 @@ class TestLocations:
         assert data["name"] == "天坛"
         assert data["sort_order"] == 2  # 已有 2 个地点，新地点排第 3
 
+    def test_add_location_sort_order_with_single_existing(self, client, auth_headers, sample_trip_data, sample_location_data):
+        """回归（评审 M-12）：仅 1 个既有地点时，新地点 sort_order 应为 1 而非 0。"""
+        single = {**sample_trip_data, "locations": [sample_trip_data["locations"][0]]}
+        create_resp = client.post("/api/trips", json=single, headers=auth_headers)
+        trip_id = create_resp.json()["id"]
+
+        resp = client.post(f"/api/trips/{trip_id}/locations", json=sample_location_data, headers=auth_headers)
+        assert resp.status_code == 201
+        assert resp.json()["sort_order"] == 1
+
     def test_delete_location(self, client, auth_headers, sample_trip_data):
         """TC-TRIP-012: 删除地点。"""
         create_resp = client.post("/api/trips", json=sample_trip_data, headers=auth_headers)
@@ -323,6 +352,57 @@ class TestLocations:
         detail2 = client.get(f"/api/trips/{trip_id}", headers=auth_headers).json()
         assert detail2["locations"][0]["id"] == locs[1]["id"]
 
+    def test_update_sort_order_persists_under_production_autoflush(
+        self, client, auth_headers, sample_trip_data
+    ):
+        """回归（评审 C1）：生产会话 autoflush=False 时排序必须真正落库。
+
+        仓库夹具的 TestSession 用默认 autoflush=True 并在请求后替端点 commit，
+        与生产 sessionmaker(autoflush=False) 不一致，曾掩盖「排序接口返回成功
+        但规范化查询把新顺序覆盖回旧顺序」的空操作。本用例用与生产同配置的
+        会话工厂替换 get_db，并直接读数据库已提交状态。
+        """
+        from test.conftest import _shared_session  # noqa: PLC0415 夹具内部模块
+        from app.core.database import get_db
+
+        # 先用默认夹具会话创建旅行（首个请求后共享会话才就位），再取同一个引擎
+        create_resp = client.post("/api/trips", json=sample_trip_data, headers=auth_headers)
+        trip_id = create_resp.json()["id"]
+        engine = _shared_session[0].get_bind()
+        ProdSession = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+        def _production_db():
+            db = ProdSession()
+            try:
+                yield db
+            finally:
+                db.close()
+
+        client.app.dependency_overrides[get_db] = _production_db
+        try:
+            detail = client.get(f"/api/trips/{trip_id}", headers=auth_headers).json()
+            locs = detail["locations"]
+
+            orders = [
+                {"location_id": locs[1]["id"], "sort_order": 0},
+                {"location_id": locs[0]["id"], "sort_order": 1},
+            ]
+            resp = client.put(f"/api/trips/{trip_id}/locations/sort", json=orders, headers=auth_headers)
+            assert resp.status_code == 200
+
+            # 直接读数据库的已提交状态，不经过任何会话缓存
+            check = ProdSession()
+            try:
+                rows = check.execute(
+                    text("SELECT id, sort_order FROM locations WHERE trip_id = :t ORDER BY id"),
+                    {"t": trip_id},
+                ).all()
+            finally:
+                check.close()
+            assert dict(rows) == {locs[0]["id"]: 1, locs[1]["id"]: 0}
+        finally:
+            client.app.dependency_overrides.pop(get_db, None)
+
 
 @pytest.mark.integration
 class TestDataIsolation:
@@ -344,6 +424,18 @@ class TestTripNegativeCases:
     def test_get_nonexistent_trip(self, client, auth_headers):
         resp = client.get("/api/trips/99999", headers=auth_headers)
         assert resp.status_code == 404
+
+    def test_nan_coordinates_return_422(self, client, auth_headers, sample_trip_data):
+        """回归（评审 M-10）：NaN 经纬度校验失败应回 422，而不是错误体序列化 500。"""
+        from fastapi.testclient import TestClient
+
+        body = {
+            **sample_trip_data,
+            "locations": [{**sample_trip_data["locations"][0], "longitude": float("nan")}],
+        }
+        quiet = TestClient(client.app, raise_server_exceptions=False)
+        resp = quiet.post("/api/trips", json=body, headers=auth_headers)
+        assert resp.status_code == 422, resp.text
 
     def test_update_nonexistent_trip(self, client, auth_headers):
         resp = client.put("/api/trips/99999", json={"title": "test", "start_date": "2025-01-01", "end_date": "2025-01-02"}, headers=auth_headers)

@@ -5,7 +5,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import get_db
@@ -81,14 +81,21 @@ def list_trips(
 ):
     query = db.query(Trip).filter(Trip.user_id == user_id)
 
+    # search 与 city 都要按地点城市匹配：只 JOIN 一次 Location，两个条件用 OR/AND
+    # 组合。各自 join 一次会产生两张同名表，SQLite 报 ambiguous column（评审 I-1）
+    needs_location_join = False
+    filters = []
     if search:
         escaped = escape_like(search)
         pattern = f"%{escaped}%"
-        query = query.join(Location, isouter=True).filter(
-            Trip.title.ilike(pattern, escape='\\')
-            | Trip.description.ilike(pattern, escape='\\')
-            | Location.city.ilike(pattern, escape='\\')
-        ).distinct()
+        needs_location_join = True
+        filters.append(
+            or_(
+                Trip.title.ilike(pattern, escape='\\'),
+                Trip.description.ilike(pattern, escape='\\'),
+                Location.city.ilike(pattern, escape='\\'),
+            )
+        )
 
     if year:
         query = query.filter(func.strftime("%Y", Trip.start_date) == str(year))
@@ -98,9 +105,13 @@ def list_trips(
 
     if city:
         escaped_city = escape_like(city)
-        query = query.join(Location, isouter=True).filter(
-            Location.city.ilike(f"%{escaped_city}%", escape='\\')
-        ).distinct()
+        needs_location_join = True
+        filters.append(Location.city.ilike(f"%{escaped_city}%", escape='\\'))
+
+    if needs_location_join:
+        query = query.join(Location, isouter=True)
+    if filters:
+        query = query.filter(*filters).distinct()
 
     if date_from or date_to:
         date_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -424,7 +435,9 @@ def add_location(
     if not trip:
         raise HTTPException(status_code=404, detail="旅行不存在")
 
-    max_order = db.query(func.max(Location.sort_order)).filter(Location.trip_id == trip_id).scalar() or -1
+    # scalar() 为 None（尚无地点）时取 0；不能写 `or -1`——会把合法的 0 当成
+    # 空值，导致第二个地点与第一个同为 0（评审 M-12）
+    max_order = db.query(func.max(Location.sort_order)).filter(Location.trip_id == trip_id).scalar()
 
     location = Location(
         trip_id=trip_id,
@@ -435,7 +448,7 @@ def add_location(
         city=req.city,
         province=req.province,
         note=req.note,
-        sort_order=max_order + 1,
+        sort_order=(max_order + 1) if max_order is not None else 0,
     )
     db.add(location)
     db.flush()
@@ -467,6 +480,10 @@ def update_sort_order(
         location = location_map.get(item.location_id)
         if location:
             location.sort_order = item.sort_order
+
+    # 生产会话是 autoflush=False：不先 flush 的话，下面的规范化查询读到的是
+    # 库里的旧顺序，随后按下标回写会把新值全部覆盖回去，排序变成空操作（评审 C1）
+    db.flush()
 
     # 规范化：按当前相对顺序重排为连续的 0..n-1，
     # 消除部分更新/并发写入可能产生的重复、负值或稀疏序号
