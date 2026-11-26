@@ -64,6 +64,7 @@ DEPLOY.md
 
 # Reports
 CODE_REVIEW_REPORT*.md
+reports/
 
 # Docker
 docker-compose.override.yml

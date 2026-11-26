@@ -29,7 +29,7 @@ npm run test
 npm run test:watch
 npm run test:coverage
 
-# E2E 测试（Playwright，需要先启动后端）
+# E2E 测试（Playwright，自行拉起前端、后端与构建产物预览服务器）
 npm run test:e2e
 npm run test:e2e:ui
 npm run test:e2e:report
@@ -66,8 +66,8 @@ npm run test:e2e:report
 ## 测试说明
 
 - **单元测试**：jsdom 环境，setup 文件 mock 了 `localStorage`、`matchMedia`、`IntersectionObserver`、`URL.createObjectURL`；Element Plus CSS 被 mock。
-- **E2E**：`playwright.config.ts` 会自行拉起前端服务并动态设置后端端口与 `/api` 代理目标；测试前置条件与运行方式见各 spec 文件及仓库根 `README.md`。
+- **E2E**：`playwright.config.ts` 自行拉起前端服务、测试后端（固定端口 18123，经 env 设置 `/api` 代理目标）与构建产物预览服务器；测试前置条件与运行方式见各 spec 文件及仓库根 `README.md`。
 
 ## 生产部署
 
-前端 Docker 镜像基于多阶段构建：Node 构建产物交由 nginx 托管，`nginx.conf` 负责 SPA fallback、`/api` 反代到后端容器、安全响应头（CSP 允许 `*.amap.com` / `*.autonavi.com`）。完整编排见仓库根 `docker-compose.yml` 与 `DEPLOY.md`。
+前端 Docker 镜像基于多阶段构建：Node 构建产物交由 nginx 托管，`nginx.conf` 负责 SPA fallback、`/api` 反代到后端容器、安全响应头（CSP 允许 `*.amap.com` / `*.autonavi.com`）。完整编排见仓库根 `docker-compose.yml`。

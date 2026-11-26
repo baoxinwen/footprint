@@ -36,8 +36,11 @@ test/
 │   └── test_amap.py           ← 高德地图 POI 搜索（mock 外部请求）
 │
 ├── e2e/                       ← 端到端测试
-│   ├── test_e2e_flow.py       ← 完整用户流程（注册→登录→创建→上传→导出→分享→改密→删除）
-│   └── test_deployed.py       ← 部署实例测试（针对 Docker 部署）
+│   └── test_e2e_flow.py       ← 完整用户流程（注册→登录→创建→上传→导出→分享→改密→删除）
+│
+├── test_deployed.py           ← 部署实例测试（针对 Docker 部署；不在 testpaths 内，需手动指定）
+├── password_fixtures.py       ← 运行时生成的测试口令
+├── conftest.py / pytest.ini
 │
 └── reports/                   ← 测试报告输出目录
     ├── report.html            ← pytest-html 生成的测试报告
@@ -159,6 +162,12 @@ cd test
 pytest test_deployed.py -v
 ```
 
+注意事项（评审 I-19）：
+
+- 认证夹具自注册一次性用户，不依赖部署实例里的预置账号
+- 依赖 `requirements-test.txt` 里的 httpx（此前用未声明的 requests，收集即失败）
+- 注册类用例受部署实例 `REGISTER_MAX_PER_HOUR` 限制（默认 3/小时/IP）；批量跑时建议在部署实例上调大该值
+
 ## 用例 ID 对照
 
 测试代码中通过注释关联到用例 ID，例如：
@@ -175,5 +184,5 @@ def test_login_success(self, client):
 
 ```bash
 cd test
-pytest --tb=long --junitxml=reports/junit.xml
+pytest
 ```

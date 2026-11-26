@@ -58,7 +58,7 @@ docker compose up -d
 - 后端 API：http://<NAS 的 IP>:8002（对局域网开放）
 - API 文档：http://<NAS 的 IP>:8002/docs
 
-`8001` 默认是明文 HTTP，并发布到宿主机所有网络接口。局域网或公网部署时应在其前方配置 HTTPS 反向代理和防火墙，不要直接暴露到公网；外层代理也应关闭 `/api/shares/view/` 路径的访问日志，避免分享 token 进入日志。
+`8001` 默认是明文 HTTP，并发布到宿主机所有网络接口。局域网或公网部署时应在其前方配置 HTTPS 反向代理和防火墙，不要直接暴露到公网；外层代理也应关闭 `/api/shares/view/` 路径的访问日志，避免分享 token 进入日志。内置的 nginx 已同时做到这两点：分享落地页与分享接口不记日志，且落地页声明 `Referrer-Policy: no-referrer`，后续的静态资源请求不会把含 token 的 Referer 带进日志（评审 I-22）——外层代理请保持同样的配置。
 
 ### 5. 安装到手机或电脑
 
@@ -100,6 +100,8 @@ cd backend
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
+
+本地运行的数据默认写在 `backend/data/`（数据库 `data/db/footprint.db`、上传 `data/uploads/`），与 Docker 数据根的目录布局一致——不要把其他文件放进这个目录：Docker 入口会以「单一数据根」白名单校验，多余条目会拒绝启动。
 
 ### 前端
 
