@@ -2,11 +2,16 @@
 Docker 部署实例完整集成测试。
 覆盖: 认证、旅行、照片、导入导出、统计、分享、时间线、搜索、账户
 用法: pytest test_deployed.py -v
+
+注意（评审 I-19）:
+- 依赖 requirements-test.txt 里的 httpx（此前用未声明的 requests，收集即失败）
+- 认证夹具自注册一次性用户，不依赖部署实例里的预置账号
+- 注册类用例受部署实例 REGISTER_MAX_PER_HOUR 限制；批量跑时建议调大该值
 """
 import pytest
 
 from .password_fixtures import PW_A, PW_B
-import requests
+import httpx
 import json
 import io
 
@@ -15,46 +20,62 @@ pytestmark = pytest.mark.deployed
 BASE_URL = "http://localhost:8002"
 
 
+# httpx 没有 requests 的模块级 get/post 快捷方法；这里补一对等价物（评审 I-19）
+def _get(url: str, **kwargs):
+    return httpx.get(url, **kwargs)
+
+
+def _post(url: str, **kwargs):
+    return httpx.post(url, **kwargs)
+
+
+
 @pytest.fixture(scope="module")
 def base_url():
     return BASE_URL
 
 
-@pytest.fixture(scope="module")
-def api(base_url):
-    """带认证的 API 会话。"""
-    s = requests.Session()
-    username = "demo"
-    password = PW_A
+def _register_and_login(client: httpx.Client, base_url: str, username: str, password: str):
+    """自注册一次性用户并登录（评审 I-19）：不依赖部署实例里预置的账号——
+    随机口令根本登不进 demo/authtest 这类预置用户，整套用例曾静默 skip。"""
+    resp = client.post(f"{base_url}/api/auth/register", json={
+        "username": username, "password": password
+    })
+    if resp.status_code not in (200, 400):
+        pytest.skip(f"注册失败: {resp.status_code} {resp.text}")
 
-    # 登录（demo 用户应该已存在）
-    resp = s.post(f"{base_url}/api/auth/login", json={
+    resp = client.post(f"{base_url}/api/auth/login", json={
         "username": username, "password": password
     })
     if resp.status_code != 200:
         pytest.skip(f"登录失败: {resp.status_code} {resp.text}")
 
     token = resp.json().get("access_token")
-    s.headers["Authorization"] = f"Bearer {token}"
+    client.headers["Authorization"] = f"Bearer {token}"
+
+
+@pytest.fixture(scope="module")
+def _deployed_username():
+    import time
+
+    import secrets as _secrets
+
+    return f"deployed_{int(time.time())}_{_secrets.token_hex(3)}"
+
+
+@pytest.fixture(scope="module")
+def api(base_url, _deployed_username):
+    """带认证的 API 会话。"""
+    s = httpx.Client()
+    _register_and_login(s, base_url, _deployed_username, PW_A)
     return s
 
 
 @pytest.fixture(scope="module")
-def api_user_b(base_url):
+def api_user_b(base_url, _deployed_username):
     """第二个用户的 API 会话（数据隔离测试）。"""
-    s = requests.Session()
-    username = "authtest"
-    password = PW_A
-
-    # 登录（authtest 用户应该已存在）
-    resp = s.post(f"{base_url}/api/auth/login", json={
-        "username": username, "password": password
-    })
-    if resp.status_code != 200:
-        pytest.skip(f"登录失败: {resp.status_code} {resp.text}")
-
-    token = resp.json().get("access_token")
-    s.headers["Authorization"] = f"Bearer {token}"
+    s = httpx.Client()
+    _register_and_login(s, base_url, _deployed_username + "_b", PW_B)
     return s
 
 
@@ -97,20 +118,20 @@ def create_test_image(width=100, height=100, color="red", fmt="JPEG"):
 
 class TestHealth:
     def test_backend_health(self, base_url):
-        resp = requests.get(f"{base_url}/api/health")
+        resp = _get(f"{base_url}/api/health")
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
 
     def test_frontend_page(self):
-        resp = requests.get("http://localhost:8001/")
+        resp = _get("http://localhost:8001/")
         assert resp.status_code == 200
 
     def test_api_proxy(self):
-        resp = requests.get("http://localhost:8001/api/health")
+        resp = _get("http://localhost:8001/api/health")
         assert resp.status_code == 200
 
     def test_csp_header(self):
-        resp = requests.get("http://localhost:8001/")
+        resp = _get("http://localhost:8001/")
         csp = resp.headers.get("Content-Security-Policy", "")
         assert "*.amap.com" in csp
         assert "*.autonavi.com" in csp
@@ -121,72 +142,72 @@ class TestHealth:
 class TestAuth:
     def test_register_success(self, base_url):
         import time
-        resp = requests.post(f"{base_url}/api/auth/register", json={
+        resp = _post(f"{base_url}/api/auth/register", json={
             "username": f"newuser_{int(time.time())}", "password": PW_A
         })
-        assert resp.status_code in (200, 400, 429)  # 400 = exists, 429 = rate limit
+        assert resp.status_code in (200, 429)  # 429 = 注册限流（每小时 3 次/ IP）
 
     def test_register_duplicate(self, base_url):
         import time
         username = f"dupuser_{int(time.time())}"
-        requests.post(f"{base_url}/api/auth/register", json={
+        _post(f"{base_url}/api/auth/register", json={
             "username": username, "password": PW_A
         })
-        resp = requests.post(f"{base_url}/api/auth/register", json={
+        resp = _post(f"{base_url}/api/auth/register", json={
             "username": username, "password": PW_B
         })
         assert resp.status_code in (400, 429)
 
     def test_register_short_username(self, base_url):
-        resp = requests.post(f"{base_url}/api/auth/register", json={
+        resp = _post(f"{base_url}/api/auth/register", json={
             "username": "ab", "password": PW_A
         })
         assert resp.status_code == 422
 
     def test_register_short_password(self, base_url):
-        resp = requests.post(f"{base_url}/api/auth/register", json={
+        resp = _post(f"{base_url}/api/auth/register", json={
             "username": "testuser", "password": "12345"
         })
         assert resp.status_code == 422
 
     def test_login_success(self, base_url):
-        requests.post(f"{base_url}/api/auth/register", json={
-            "username": "logintest", "password": PW_A
+        _post(f"{base_url}/api/auth/register", json={
+            "username": f"logintest_{int(time.time())}", "password": PW_A
         })
-        resp = requests.post(f"{base_url}/api/auth/login", json={
-            "username": "logintest", "password": PW_A
+        resp = _post(f"{base_url}/api/auth/login", json={
+            "username": f"logintest_{int(time.time())}", "password": PW_A
         })
         assert resp.status_code == 200
         assert "access_token" in resp.json()
 
     def test_login_wrong_password(self, base_url):
-        requests.post(f"{base_url}/api/auth/register", json={
-            "username": "logintest2", "password": PW_A
+        _post(f"{base_url}/api/auth/register", json={
+            "username": f"logintest2_{int(time.time())}", "password": PW_A
         })
-        resp = requests.post(f"{base_url}/api/auth/login", json={
+        resp = _post(f"{base_url}/api/auth/login", json={
             "username": "logintest2", "password": "wrong"
         })
         assert resp.status_code == 400
 
     def test_login_nonexistent_user(self, base_url):
-        resp = requests.post(f"{base_url}/api/auth/login", json={
+        resp = _post(f"{base_url}/api/auth/login", json={
             "username": "ghost_user_xyz", "password": PW_A
         })
         assert resp.status_code == 400
 
     def test_no_token_rejected(self, base_url):
-        resp = requests.get(f"{base_url}/api/trips")
+        resp = _get(f"{base_url}/api/trips")
         assert resp.status_code in (401, 403)
 
     def test_invalid_token_rejected(self, base_url):
-        resp = requests.get(f"{base_url}/api/trips", headers={
+        resp = _get(f"{base_url}/api/trips", headers={
             "Authorization": "Bearer fake-token-123"
         })
         assert resp.status_code == 401
 
     def test_change_password(self, base_url):
         import time
-        s = requests.Session()
+        s = httpx.Client()
         username = f"changepwd_{int(time.time())}"
         password = PW_A
 
@@ -525,12 +546,12 @@ class TestShares:
         share_resp = api.post(f"{base_url}/api/shares/{trip_id}")
         token = share_resp.json()["token"]
 
-        resp = requests.get(f"{base_url}/api/shares/view/{token}")
+        resp = _get(f"{base_url}/api/shares/view/{token}")
         assert resp.status_code == 200
         assert "title" in resp.json()
 
     def test_view_share_not_found(self, base_url):
-        resp = requests.get(f"{base_url}/api/shares/view/nonexistent-token-123")
+        resp = _get(f"{base_url}/api/shares/view/nonexistent-token-123")
         assert resp.status_code == 404
 
     def test_create_share_reuse(self, api, base_url):
@@ -564,5 +585,5 @@ class TestAccount:
         assert "username" in data
 
     def test_get_account_unauthenticated(self, base_url):
-        resp = requests.get(f"{base_url}/api/account/info")
+        resp = _get(f"{base_url}/api/account/info")
         assert resp.status_code in (401, 403)

@@ -21,6 +21,61 @@ def _build_legacy_engine(tmp_path, name, request, with_auth_version=True):
 
 
 @pytest.mark.unit
+def test_migrated_schema_matches_models(tmp_path):
+    """回归（评审 I-21）：迁移到 head 后的 schema 必须与模型一致。
+
+    测试库由 create_all 建、生产库由迁移建——给模型加列而忘写迁移时，
+    全部测试仍然通过，生产接口 500。这条比对是唯一的守护。
+    SQLite 方言对默认值/类型/部分索引的回读噪音以结构性差异为准：
+    只认 add_table / remove_table / add_column / remove_column 四类。
+    """
+    from alembic.autogenerate import compare_metadata
+    from alembic.runtime.migration import MigrationContext
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'drift.db'}")
+    try:
+        run_startup_migrations(engine)
+
+        context = MigrationContext.configure(engine.connect())
+        diff = compare_metadata(context, Base.metadata)
+        structural = [item for item in diff if item[0] in ("add_table", "remove_table", "add_column", "remove_column")]
+        assert structural == [], f"模型与迁移存在结构性漂移: {[str(item)[:120] for item in structural]}"
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.unit
+def test_schema_drift_guard_detects_a_missing_column(tmp_path):
+    """漂移守护的灵敏度验证：模型多出一列时比对必须报差异。
+
+    用「克隆真实 users 表 + 临时加列」的独立 metadata 证明守护「能红」——
+    守护测试本身不能是恒真的。
+    """
+    from sqlalchemy import Column, Integer, MetaData
+
+    from alembic.autogenerate import compare_metadata
+    from alembic.runtime.migration import MigrationContext
+
+    from app.core.database import Base as metadata_base
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'drift-sim.db'}")
+    try:
+        run_startup_migrations(engine)
+
+        drifted = MetaData()
+        cloned_users = metadata_base.metadata.tables["users"].to_metadata(drifted)
+        cloned_users.append_column(Column("drift_probe", Integer))
+
+        context = MigrationContext.configure(engine.connect())
+        diff = compare_metadata(context, drifted)
+        # add_column 的形状是 (op, None, '<table>', Column(...))
+        added_columns = [item for item in diff if item[0] == "add_column"]
+        assert any(item[2] == "users" and item[3].name == "drift_probe" for item in added_columns), diff
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.unit
 def test_fresh_database_upgrades_to_full_schema_and_is_idempotent(tmp_path):
     """全新空库：upgrade head 建全表，重复执行幂等。"""
     engine = create_engine(f"sqlite:///{tmp_path / 'fresh.db'}")

@@ -10,6 +10,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 import os
 os.environ["JWT_SECRET"] = "test-secret-key-for-testing-only"
 os.environ["AMAP_KEY"] = "test-amap-key"
+# 显式置空：pydantic-settings 的 env_file 相对 cwd 解析，在 test/ 以外的目录跑 pytest
+# 会读到真实 .env，失败断言曾把真实 AMAP_SECURITY_CODE 写进 pytest-html 报告（评审 C2）
+os.environ["AMAP_SECURITY_CODE"] = ""
 # 阻止 rate_limit 在导入时启动后台清理线程，避免测试中的非确定性干扰
 os.environ["TESTING"] = "1"
 
@@ -58,8 +61,6 @@ def _create_test_app():
             pass  # Don't close - db_session may still need it
 
     fastapi_app.dependency_overrides[get_db] = _override
-    if fastapi_app.router.on_startup:
-        fastapi_app.router.on_startup.clear()
 
     return fastapi_app, engine, TestSession
 
