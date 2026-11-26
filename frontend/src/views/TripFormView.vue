@@ -9,7 +9,6 @@ import AMapLoader from '@amap/amap-jsapi-loader'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import { useTheme } from '../composables/useTheme'
-import { renderMarkdown } from '../utils/markdown'
 import { isLogoutNavigation } from '../utils/authSession'
 import { getConfig } from '../api/config'
 import { discardLegacyTripDraft, getTripDraftKey } from '../utils/tripDraft'
@@ -55,6 +54,11 @@ const trackedLocations = computed(() => locations.value.map((location) => ({
   sort_order: location.sort_order,
   _deleted: location._deleted,
 })))
+
+// Markdown 编辑器：内嵌在每个地点卡片内（声明需早于下方 watch 的监听源求值）
+const editingNoteId = ref<number | null>(null)
+const noteContent = ref('')
+const notePreview = ref(true)
 
 function restoreDraft() {
   const rawDraft = localStorage.getItem(DRAFT_KEY)
@@ -104,7 +108,14 @@ function scheduleDraftWrite() {
   }, 300)
 }
 
-watch([form, trackedLocations], () => {
+// 游记编辑器是否带未保存修改：收起/切换/保存/离开都要看它（评审 I-11~13）
+function noteDirty(): boolean {
+  if (editingNoteId.value === null) return false
+  const target = locations.value.find((l) => l.id === editingNoteId.value)
+  return !!target && noteContent.value !== (target.note || '')
+}
+
+watch([form, trackedLocations, noteContent], () => {
   if (!trackChanges) return
   hasUnsavedChanges.value = true
   if (!isEdit.value) scheduleDraftWrite()
@@ -114,10 +125,17 @@ onBeforeUnmount(() => {
   // 卸载时若有未落盘的草稿变更，立即写入一次，避免丢草稿。
   // 护栏与定时器回调一致：保存成功/编辑模式不写，
   // 防止"复活"刚随保存成功删除的草稿（幽灵草稿）
+  let timerFlushed = false
   if (draftSaveTimer !== null) {
     clearTimeout(draftSaveTimer)
     draftSaveTimer = null
-    if (hasUnsavedChanges.value && !isEdit.value) writeDraftNow()
+    timerFlushed = true
+  }
+  // 新建模式下把编辑器缓冲区一并写进草稿：页面正在销毁，没有「取消」语义（评审 I-11）
+  if ((timerFlushed || noteDirty()) && hasUnsavedChanges.value && !isEdit.value) {
+    const editing = locations.value.find((l) => l.id === editingNoteId.value)
+    if (editing && !editing._deleted) editing.note = noteContent.value
+    writeDraftNow()
   }
 })
 
@@ -189,16 +207,20 @@ function normalizePoiMetadata(poi: any, addressComponent?: any): AmapPoi {
   }
 }
 
-// Markdown 编辑器：内嵌在每个地点卡片内
-const editingNoteId = ref<number | null>(null)
-const noteContent = ref('')
-const notePreview = ref(true)
+// 编辑数据是否加载失败：失败时进入失败态，禁用整张表单并提供重试（评审 I-14）
+const loadFailed = ref(false)
+const loadErrorMessage = ref('')
 
-onMounted(async () => {
+async function initMapSdk() {
   // 加载高德地图 SDK（地点搜索使用 JS API Key，而非 Web 服务 Key）
   try {
     const config = await getConfig()
     ;(window as any)._AMapSecurityConfig = { securityJsCode: config.amap_security_code }
+    if (!config.amap_key) {
+      // 配置缺失刷新解决不了，给出可行动的指引（评审 M-20，与地图页一致）
+      ElMessage.error('未配置高德地图 AMAP_KEY，请在服务端 .env 中配置后重启')
+      return
+    }
     AMapInstance = await AMapLoader.load({
       key: config.amap_key,
       version: '2.0',
@@ -207,29 +229,43 @@ onMounted(async () => {
     placeSearchInstance = new AMapInstance.PlaceSearch({ pageSize: 10, pageIndex: 1 })
     geocoderInstance = new AMapInstance.Geocoder()
   } catch {
-    ElMessage.error('高德地图 SDK 加载失败，请刷新页面重试')
+    ElMessage.error('高德地图 SDK 加载失败，请检查网络后重试')
   }
+}
 
-  if (isEdit.value) {
-    loading.value = true
-    try {
-      const { data } = await getTrip(tripId.value)
-      form.value = {
-        title: data.title,
-        description: data.description || '',
-        start_date: data.start_date,
-        end_date: data.end_date,
-      }
-      locations.value = data.locations.map((l) => ({ ...l, photos: [], _deleted: false }))
-    } catch {
-      ElMessage.error('加载旅行详情失败，请稍后重试')
-    } finally {
-      loading.value = false
-      await nextTick()
-      hasUnsavedChanges.value = false
-      trackChanges = true
+async function loadTripForEdit() {
+  loading.value = true
+  loadFailed.value = false
+  try {
+    const { data } = await getTrip(tripId.value)
+    form.value = {
+      title: data.title,
+      description: data.description || '',
+      start_date: data.start_date,
+      end_date: data.end_date,
     }
+    locations.value = data.locations.map((l) => ({ ...l, photos: [], _deleted: false }))
+  } catch (error: unknown) {
+    // 进入失败态而不是留下一张可编辑的空表单（评审 I-14）；
+    // 404（不存在/不属于当前用户）单独提示
+    loadFailed.value = true
+    const status = (error as { response?: { status?: number } })?.response?.status
+    loadErrorMessage.value =
+      status === 404 ? '旅行不存在或已被删除' : '加载旅行详情失败，请检查网络后重新加载'
+  } finally {
+    loading.value = false
+    await nextTick()
+    hasUnsavedChanges.value = false
+    trackChanges = true
   }
+}
+
+onMounted(async () => {
+  // 旅行数据与地图 SDK 并行加载（评审 I-15）：编辑页能否出数据
+  // 不应依赖第三方 CDN 的快慢
+  const sdkReady = initMapSdk()
+  if (isEdit.value) await loadTripForEdit()
+  await sdkReady
 })
 
 function resolveCityForPois(pois: any[]): Promise<AmapPoi[]> {
@@ -337,8 +373,8 @@ function addPoi(poi: AmapPoi) {
 }
 
 async function removeLocation(loc: EditableLocation) {
-  if (editingNoteId.value === loc.id) editingNoteId.value = null
-  // 破坏性操作需确认：删除地点会连带丢弃其游记（保存后不可恢复）
+  // 破坏性操作需确认：删除地点会连带丢弃其游记（保存后不可恢复）。
+  // 确认放在关闭编辑器之前——用户取消时编辑态原样保留（评审 I-13）
   try {
     await ElMessageBox.confirm(
       `移除「${loc.name}」？其游记将一并删除${isEdit.value ? '，保存后生效' : ''}。`,
@@ -348,6 +384,7 @@ async function removeLocation(loc: EditableLocation) {
   } catch {
     return
   }
+  if (editingNoteId.value === loc.id) closeNoteEditor()
   if (isEdit.value && loc.id && typeof loc.id === 'number' && loc.id > 0) {
     // Mark for deletion, don't actually delete yet
     loc._deleted = true
@@ -377,6 +414,18 @@ async function handleUploadPhoto(loc: EditableLocation, file: File) {
 
 async function startEditNote(loc: EditableLocation) {
   if (editingNoteId.value === loc.id) {
+    // 同一地点再点一次＝收起：带未保存修改时先确认（评审 I-13）
+    if (noteDirty()) {
+      try {
+        await ElMessageBox.confirm(
+          `「${loc.name}」的游记尚未保存，收起后将丢失这些修改。`,
+          '未保存的游记',
+          { confirmButtonText: '放弃并收起', cancelButtonText: '继续编辑', type: 'warning' },
+        )
+      } catch {
+        return
+      }
+    }
     closeNoteEditor()
     return
   }
@@ -412,10 +461,6 @@ function closeNoteEditor() {
   noteContent.value = ''
 }
 
-function renderNote(note: string | null) {
-  return note ? renderMarkdown(note) : ''
-}
-
 function formatLocationRegion(location: EditableLocation) {
   const regions = Array.from(new Set([location.city, location.province].filter(Boolean)))
   return regions.join(' · ') || '地区信息缺失'
@@ -433,6 +478,11 @@ async function handleSave() {
 
   saving.value = true
   try {
+    // 正在编辑的游记一并提交（评审 I-12）：编辑器缓冲区先落回目标地点，
+    // 不关编辑器——保存失败时输入还在原地
+    const editing = locations.value.find((l) => l.id === editingNoteId.value)
+    if (editing && !editing._deleted) editing.note = noteContent.value
+
     if (isEdit.value) {
       await updateTrip(tripId.value, {
         title: form.value.title,
@@ -500,6 +550,17 @@ async function handleSave() {
 
 <template>
   <div class="form-page" v-loading="loading">
+    <!-- 编辑数据加载失败：禁用整张表单，给出重试（评审 I-14） -->
+    <section v-if="isEdit && loadFailed" class="load-failed-panel" role="alert">
+      <h2 class="load-failed-title">无法加载旅行</h2>
+      <p class="load-failed-desc">{{ loadErrorMessage }}</p>
+      <div class="load-failed-actions">
+        <el-button type="primary" @click="loadTripForEdit">重新加载</el-button>
+        <el-button @click="router.push('/trips')">返回旅行列表</el-button>
+      </div>
+    </section>
+
+    <template v-else>
     <header class="form-header">
       <p class="form-kicker">行程档案</p>
       <h1 class="form-title">{{ isEdit ? '编辑旅行' : '新建旅行' }}</h1>
@@ -654,7 +715,7 @@ async function handleSave() {
               </div>
 
               <!-- 游记预览 -->
-              <div v-else-if="loc.note" class="note-preview markdown-body" v-html="renderNote(loc.note)"></div>
+              <NoteMarkdown v-else-if="loc.note" class="note-preview" :note="loc.note" />
             </div>
           </div>
         </section>
@@ -667,6 +728,7 @@ async function handleSave() {
         {{ isEdit ? '保存修改' : '创建旅行' }}
       </el-button>
     </footer>
+    </template>
   </div>
 </template>
 

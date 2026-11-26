@@ -74,6 +74,7 @@ vi.mock('element-plus', async (importOriginal) => {
 import TripFormView from '../../views/TripFormView.vue'
 import { addLocation, deleteLocation, getTrip, updateLocation, updateTrip } from '../../api/trips'
 import { uploadPhoto } from '../../api/photos'
+import { getConfig } from '../../api/config'
 import { FakeCacheStorage } from '../pwa/fakeCacheStorage'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -211,6 +212,61 @@ describe('TripFormView', () => {
     await new Promise(resolve => setTimeout(resolve, 100))
 
     expect(getTrip).toHaveBeenCalled()
+  })
+
+  it('shows a failure state instead of an editable empty form when the edit data fails to load (I-14)', async () => {
+    // 回归（评审 I-14）：加载失败曾只弹一条提示，页面仍是可编辑的空表单
+    vi.mocked(getTrip).mockRejectedValue({ response: { status: 500 } })
+    const wrapper = mountView()
+    await flushPromises()
+
+    const panel = wrapper.find('.load-failed-panel')
+    expect(panel.exists()).toBe(true)
+    expect(panel.text()).toContain('加载旅行详情失败')
+    expect(panel.text()).toContain('重新加载')
+  })
+
+  it('shows a dedicated message when the trip does not exist (I-14)', async () => {
+    vi.mocked(getTrip).mockRejectedValue({ response: { status: 404 } })
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('.load-failed-panel').text()).toContain('旅行不存在或已被删除')
+  })
+
+  it('retries loading after a failure and restores the form (I-14)', async () => {
+    vi.mocked(getTrip).mockRejectedValueOnce(new Error('boom'))
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.find('.load-failed-panel').exists()).toBe(true)
+
+    vi.mocked(getTrip).mockResolvedValue({ data: mockTripData } as any)
+    await wrapper.findAll('.load-failed-panel button')[0].trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.load-failed-panel').exists()).toBe(false)
+    expect((wrapper.vm as any).form.title).toBe('北京三日游')
+  })
+
+  it('loads the trip data while the map SDK is still loading (I-15)', async () => {
+    // 回归（评审 I-15）：编辑数据不得排在 SDK 加载之后——CDN 慢时空表单挂起
+    const { default: AMapLoader } = await import('@amap/amap-jsapi-loader')
+    vi.mocked(AMapLoader.load).mockImplementationOnce(() => new Promise(() => {}))
+    vi.mocked(getTrip).mockResolvedValue({ data: mockTripData } as any)
+
+    mountView()
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    expect(getTrip).toHaveBeenCalledOnce()
+  })
+
+  it('explains a missing AMAP_KEY instead of telling the user to refresh (M-20)', async () => {
+    vi.mocked(getConfig).mockResolvedValueOnce({ amap_key: '', amap_security_code: '' } as any)
+    vi.mocked(getTrip).mockResolvedValue({ data: mockTripData } as any)
+    mountView()
+    await flushPromises()
+
+    expect(ElMessage.error).toHaveBeenCalledWith('未配置高德地图 AMAP_KEY，请在服务端 .env 中配置后重启')
   })
 
   it('uses the backend AMap security code when loading the SDK', async () => {
@@ -435,6 +491,75 @@ describe('TripFormView', () => {
     await wrapper.find('.location-item').findAll('button')[0].trigger('click')
 
     expect(wrapper.get<HTMLTextAreaElement>('[data-testid="note-editor"]').element.value).toBe('第二地点游记')
+  })
+
+  async function openNoteEditorAndType(wrapper: any, text: string) {
+    await wrapper.findAll('.location-item')[0].findAll('button')[0].trigger('click')
+    await wrapper.get<HTMLTextAreaElement>('[data-testid="note-editor"]').setValue(text)
+    await nextTick()
+  }
+
+  it('includes the note being edited in the save payload (I-12)', async () => {
+    // 回归（评审 I-12）：不点「保存游记」直接点「保存修改」，正在写的内容也要提交
+    vi.mocked(getTrip).mockResolvedValue({ data: mockTripData } as any)
+    vi.mocked(updateTrip).mockResolvedValue({ data: mockTripData } as any)
+    const wrapper = mountView()
+    await flushPromises()
+
+    await openNoteEditorAndType(wrapper, '正在写的新游记')
+    await (wrapper.vm as any).handleSave()
+
+    expect(updateTrip).toHaveBeenCalledOnce()
+    expect(updateTrip).toHaveBeenCalledWith(1, expect.objectContaining({
+      locations: [
+        expect.objectContaining({ id: 1, note: '正在写的新游记' }),
+        expect.objectContaining({ id: 2 }),
+      ],
+    }))
+  })
+
+  it('warns before leaving while the note editor has unsaved input (I-11)', async () => {
+    // 回归（评审 I-11）：编辑器里的输入必须计入「未保存」，
+    // 否则离开守卫与 beforeunload 都不拦，输入静默丢失
+    vi.mocked(getTrip).mockResolvedValue({ data: mockTripData } as any)
+    const wrapper = mountView()
+    await flushPromises()
+
+    await openNoteEditorAndType(wrapper, '只写了一半的游记')
+
+    await routerState.leaveGuard!({ path: '/' })
+    expect(ElMessageBox.confirm).toHaveBeenCalled()
+  })
+
+  it('asks before discarding unsaved note input on collapse (I-13)', async () => {
+    // 回归（评审 I-13）：「收起游记」不能无提示丢弃未保存内容
+    vi.mocked(getTrip).mockResolvedValue({ data: mockTripData } as any)
+    const wrapper = mountView()
+    await flushPromises()
+
+    await openNoteEditorAndType(wrapper, '收起前未保存')
+    vi.mocked(ElMessageBox.confirm).mockRejectedValueOnce(new Error('cancel'))
+
+    await wrapper.findAll('.location-item')[0].findAll('button')[0].trigger('click')
+
+    expect(ElMessageBox.confirm).toHaveBeenCalled()
+    // 用户选择「继续编辑」：编辑器保持打开
+    expect(wrapper.find('[data-testid="note-editor"]').exists()).toBe(true)
+  })
+
+  it('keeps the note editor open when location deletion is cancelled (I-13)', async () => {
+    // 回归（评审 I-13）：删除地点取消后，编辑器不能被预先关闭
+    vi.mocked(getTrip).mockResolvedValue({ data: mockTripData } as any)
+    const wrapper = mountView()
+    await flushPromises()
+
+    await openNoteEditorAndType(wrapper, '删除前未保存')
+    vi.mocked(ElMessageBox.confirm).mockRejectedValueOnce(new Error('cancel'))
+
+    await wrapper.findAll('.location-item')[0].findAll('button')[2].trigger('click')
+
+    expect(ElMessageBox.confirm).toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="note-editor"]').exists()).toBe(true)
   })
 
   it('uploads a photo to the visible location after an earlier location is deleted', async () => {
